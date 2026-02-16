@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/auth';  // ← IMPORTANTE: agregar esta línea
 import {
     format,
     startOfWeek,
@@ -20,6 +21,7 @@ import {
 
 export default function Agenda() {
     const navigate = useNavigate();
+    const { user } = useAuth();  // ← Obtener el usuario autenticado
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedSede, setSelectedSede] = useState<Sede | 'all'>('all');
     const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -69,7 +71,7 @@ export default function Agenda() {
             await api.createAppointment({
                 patientId: formData.patientId,
                 serviceId: formData.serviceId,
-                professionalId: '92f4002f-76d1-49f9-8bb1-dc61891f8eb4',
+                professionalId: user?.id || '',  // ← Usar el ID del usuario autenticado
                 sede: formData.sede,
                 date: dateTime,
                 status: 'scheduled'
@@ -479,7 +481,7 @@ export default function Agenda() {
                                 </button>
                             </div>
 
-                            {/* Ver ficha del paciente - CORREGIDO con useNavigate */}
+                            {/* Ver ficha del paciente */}
                             <button
                                 onClick={() => {
                                     navigate(`/pacientes/${selectedAppointment.patientId}`);
