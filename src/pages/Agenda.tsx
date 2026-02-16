@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../lib/auth';  // ← IMPORTANTE: agregar esta línea
+import { useAuth } from '../lib/auth';
 import {
     format,
     startOfWeek,
@@ -21,7 +21,7 @@ import {
 
 export default function Agenda() {
     const navigate = useNavigate();
-    const { user } = useAuth();  // ← Obtener el usuario autenticado
+    const { user } = useAuth();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedSede, setSelectedSede] = useState<Sede | 'all'>('all');
     const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -44,14 +44,43 @@ export default function Agenda() {
         loadData();
     }, []);
 
+    // LOG: Mostrar citas cada vez que se cargan
+    useEffect(() => {
+        if (appointments.length > 0) {
+            console.log('📅 TOTAL CITAS CARGADAS:', appointments.length);
+            console.log('📅 DETALLE CITAS:', appointments.map(a => ({
+                id: a.id,
+                paciente: a.patientName,
+                fecha: a.date,
+                sede: a.sede,
+                status: a.status
+            })));
+            
+            const hoy = format(new Date(), 'yyyy-MM-dd');
+            const citasHoy = appointments.filter(a => a.date.startsWith(hoy));
+            console.log(`📅 CITAS PARA HOY (${hoy}):`, citasHoy.length);
+            
+            const citasSemana = appointments.filter(a => {
+                const aptDate = parseISO(a.date);
+                return aptDate >= startOfWeek(currentDate, { weekStartsOn: 1 }) && 
+                       aptDate <= addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), 7);
+            });
+            console.log(`📅 CITAS EN SEMANA ACTUAL:`, citasSemana.length);
+        } else {
+            console.log('📅 NO HAY CITAS CARGADAS');
+        }
+    }, [appointments, currentDate]);
+
     const loadData = async () => {
         try {
             setLoading(true);
+            console.log('📅 CARGANDO DATOS...');
             const [appointmentsData, patientsData, servicesData] = await Promise.all([
                 api.getAppointments(),
                 api.getPatients(),
                 api.getServices()
             ]);
+            console.log('📅 DATOS RECIBIDOS - Citas:', appointmentsData.length);
             setAppointments(appointmentsData);
             setPatients(patientsData);
             setServices(servicesData);
@@ -67,21 +96,29 @@ export default function Agenda() {
         setSaving(true);
         try {
             const dateTime = `${formData.date}T${formData.time}:00`;
+            console.log('📅 CREANDO CITA:', {
+                paciente: formData.patientId,
+                servicio: formData.serviceId,
+                profesional: user?.id,
+                sede: formData.sede,
+                fecha: dateTime
+            });
             
             await api.createAppointment({
                 patientId: formData.patientId,
                 serviceId: formData.serviceId,
-                professionalId: user?.id || '',  // ← Usar el ID del usuario autenticado
+                professionalId: user?.id || '',
                 sede: formData.sede,
                 date: dateTime,
                 status: 'scheduled'
             });
             
+            console.log('📅 CITA CREADA EXITOSAMENTE');
             setIsModalOpen(false);
             resetForm();
             await loadData();
         } catch (error: any) {
-            console.error('Error creando cita:', error);
+            console.error('📅 ERROR CREANDO CITA:', error);
             alert('Error al crear cita: ' + error.message);
         } finally {
             setSaving(false);
@@ -176,10 +213,24 @@ export default function Agenda() {
     );
 
     const getAppointmentForSlot = (day: Date, hour: Date) => {
-        return filteredAppointments.find(apt => {
+        const apt = filteredAppointments.find(apt => {
             const aptDate = parseISO(apt.date);
-            return isSameDay(aptDate, day) && isSameHour(aptDate, hour);
+            const sameDay = isSameDay(aptDate, day);
+            const sameHour = isSameHour(aptDate, hour);
+            
+            // LOG detallado para depuración
+            if (sameDay && sameHour) {
+                console.log('🎯 CITA ENCONTRADA:', {
+                    paciente: apt.patientName,
+                    fecha: format(aptDate, 'yyyy-MM-dd HH:mm'),
+                    diaGrid: format(day, 'yyyy-MM-dd HH:mm'),
+                    sede: apt.sede
+                });
+            }
+            
+            return sameDay && sameHour;
         });
+        return apt;
     };
 
     const getStatusColor = (status: string) => {
