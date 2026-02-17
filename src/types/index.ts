@@ -14,7 +14,7 @@ export interface Service {
     name: string;
     duration: number; // in minutes
     price: number;
-    available_sedes: Sede[];  // ← CAMBIADO de availableSedes a available_sedes
+    available_sedes: Sede[];
 }
 
 export interface Patient {
@@ -24,6 +24,8 @@ export interface Patient {
     phone: string;
     email: string;
     history: string;
+    address?: string;        // ← NUEVO: Dirección del paciente
+    birth_date?: string;     // ← NUEVO: Fecha de nacimiento (YYYY-MM-DD)
     createdAt: string;
 }
 
@@ -40,6 +42,38 @@ export interface Appointment {
     status: 'scheduled' | 'completed' | 'cancelled';
     notes?: string;
 }
+
+// ============================================
+// NUEVO: Interfaz para Notas Clínicas
+// ============================================
+export interface ClinicalNote {
+    id: string;
+    patient_id: string;
+    professional_id?: string;
+    professional_name?: string;
+    title: string;
+    content: string;
+    note_date: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export type ClinicalNoteFormData = Omit<ClinicalNote, 'id' | 'created_at' | 'updated_at' | 'professional_name'>;
+
+// ============================================
+// NUEVO: Interfaz para Archivos de Pacientes
+// ============================================
+export interface PatientFile {
+    id: string;
+    patient_id: string;
+    name: string;
+    file_path: string;
+    file_type: string;
+    file_size?: number;
+    created_at: string;
+}
+
+export type PatientFileFormData = Omit<PatientFile, 'id' | 'created_at'>;
 
 // ============================================
 // Interfaz para Fichas Podológicas

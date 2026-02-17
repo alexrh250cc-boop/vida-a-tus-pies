@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Appointment, Patient, Service, User, FichaPodologica } from '../types';
+import { Appointment, Patient, Service, User, FichaPodologica, ClinicalNote, PatientFile, ClinicalNoteFormData } from '../types';
 
 export const api = {
     // Users (Profiles)
@@ -30,7 +30,7 @@ export const api = {
                 name: service.name,
                 duration: service.duration,
                 price: service.price,
-                available_sedes: service.available_sedes  // ← CAMBIADO
+                available_sedes: service.available_sedes
             }])
             .select()
             .single();
@@ -46,7 +46,7 @@ export const api = {
                 name: service.name,
                 duration: service.duration,
                 price: service.price,
-                available_sedes: service.available_sedes  // ← CAMBIADO
+                available_sedes: service.available_sedes
             })
             .eq('id', id)
             .select()
@@ -96,7 +96,9 @@ export const api = {
                 cedula: patient.cedula,
                 phone: patient.phone,
                 email: patient.email,
-                history: patient.history
+                history: patient.history,
+                address: patient.address,
+                birth_date: patient.birth_date
             }])
             .select()
             .single();
@@ -108,7 +110,15 @@ export const api = {
     updatePatient: async (id: string, patient: Partial<Patient>) => {
         const { data, error } = await supabase
             .from('patients')
-            .update(patient)
+            .update({
+                name: patient.name,
+                cedula: patient.cedula,
+                phone: patient.phone,
+                email: patient.email,
+                history: patient.history,
+                address: patient.address,
+                birth_date: patient.birth_date
+            })
             .eq('id', id)
             .select()
             .single();
@@ -125,6 +135,140 @@ export const api = {
 
         if (error) throw error;
         return true;
+    },
+
+    // Clinical Notes
+    getClinicalNotes: async (patientId: string): Promise<ClinicalNote[]> => {
+        const { data, error } = await supabase
+            .from('clinical_notes')
+            .select(`
+                *,
+                professional:profiles(name)
+            `)
+            .eq('patient_id', patientId)
+            .order('note_date', { ascending: false });
+
+        if (error) throw error;
+
+        return (data || []).map((note: any) => ({
+            ...note,
+            professional_name: note.professional?.name
+        }));
+    },
+
+    createClinicalNote: async (note: ClinicalNoteFormData) => {
+        const { data, error } = await supabase
+            .from('clinical_notes')
+            .insert([{
+                patient_id: note.patient_id,
+                professional_id: note.professional_id,
+                title: note.title,
+                content: note.content,
+                note_date: note.note_date
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    updateClinicalNote: async (id: string, note: Partial<ClinicalNote>) => {
+        const { data, error } = await supabase
+            .from('clinical_notes')
+            .update({
+                title: note.title,
+                content: note.content,
+                note_date: note.note_date
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    deleteClinicalNote: async (id: string) => {
+        const { error } = await supabase
+            .from('clinical_notes')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
+    },
+
+    // Patient Files
+    getPatientFiles: async (patientId: string): Promise<PatientFile[]> => {
+        const { data, error } = await supabase
+            .from('patient_files')
+            .select('*')
+            .eq('patient_id', patientId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    uploadPatientFile: async (patientId: string, file: File) => {
+        // Generar nombre único para el archivo
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${patientId}/${Date.now()}.${fileExt}`;
+        const filePath = fileName;
+
+        // Subir archivo a Storage
+        const { error: uploadError } = await supabase.storage
+            .from('patient-files')
+            .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // Obtener URL pública
+        const { data: { publicUrl } } = supabase.storage
+            .from('patient-files')
+            .getPublicUrl(filePath);
+
+        // Guardar referencia en la base de datos
+        const { data, error } = await supabase
+            .from('patient_files')
+            .insert([{
+                patient_id: patientId,
+                name: file.name,
+                file_path: filePath,
+                file_type: file.type,
+                file_size: file.size
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return { ...data, publicUrl };
+    },
+
+    deletePatientFile: async (id: string, filePath: string) => {
+        // Eliminar de Storage
+        const { error: storageError } = await supabase.storage
+            .from('patient-files')
+            .remove([filePath]);
+
+        if (storageError) throw storageError;
+
+        // Eliminar de la base de datos
+        const { error } = await supabase
+            .from('patient_files')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
+    },
+
+    getFilePublicUrl: (filePath: string): string => {
+        const { data } = supabase.storage
+            .from('patient-files')
+            .getPublicUrl(filePath);
+        return data.publicUrl;
     },
 
     // Appointments
@@ -157,6 +301,14 @@ export const api = {
     },
 
     createAppointment: async (appointment: Omit<Appointment, 'id' | 'patientName' | 'serviceName' | 'professionalName'>) => {
+        // Validar que la hora esté entre 8 y 20
+        const appointmentDate = new Date(appointment.date);
+        const hour = appointmentDate.getHours();
+        
+        if (hour < 8 || hour > 20) {
+            throw new Error('Las citas solo pueden agendarse entre las 8:00 y las 20:00');
+        }
+
         const { data, error } = await supabase
             .from('appointments')
             .insert([{

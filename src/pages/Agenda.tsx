@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import {
@@ -7,16 +7,14 @@ import {
     addDays,
     startOfDay,
     addHours,
-    isSameDay,
-    parseISO,
-    isSameHour
+    parseISO
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
 import { Appointment, Sede, Patient, Service } from '../types';
-import { 
+import {
     ChevronLeft, ChevronRight, Plus, X, Calendar, Clock, MapPin,
-    Edit, Trash2, User, FileText
+    Edit, Trash2, User, FileText, Search
 } from 'lucide-react';
 
 export default function Agenda() {
@@ -40,47 +38,48 @@ export default function Agenda() {
         time: '10:00'
     });
 
+    // Autocomplete states
+    const [patientSearchTerm, setPatientSearchTerm] = useState('');
+    const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
+    const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
+    const searchRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         loadData();
     }, []);
 
-    // LOG: Mostrar citas cada vez que se cargan
+    // 🔥 EFECTO PARA FILTRAR PACIENTES
     useEffect(() => {
-        if (appointments.length > 0) {
-            console.log('📅 TOTAL CITAS CARGADAS:', appointments.length);
-            console.log('📅 DETALLE CITAS:', appointments.map(a => ({
-                id: a.id,
-                paciente: a.patientName,
-                fecha: a.date,
-                sede: a.sede,
-                status: a.status
-            })));
-            
-            const hoy = format(new Date(), 'yyyy-MM-dd');
-            const citasHoy = appointments.filter(a => a.date.startsWith(hoy));
-            console.log(`📅 CITAS PARA HOY (${hoy}):`, citasHoy.length);
-            
-            const citasSemana = appointments.filter(a => {
-                const aptDate = parseISO(a.date);
-                return aptDate >= startOfWeek(currentDate, { weekStartsOn: 1 }) && 
-                       aptDate <= addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), 7);
-            });
-            console.log(`📅 CITAS EN SEMANA ACTUAL:`, citasSemana.length);
+        if (patientSearchTerm.trim() === '') {
+            setFilteredPatients([]);
         } else {
-            console.log('📅 NO HAY CITAS CARGADAS');
+            const filtered = patients.filter(patient =>
+                patient.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
+                patient.cedula.toLowerCase().includes(patientSearchTerm.toLowerCase())
+            );
+            setFilteredPatients(filtered);
         }
-    }, [appointments, currentDate]);
+    }, [patientSearchTerm, patients]);
+
+    // 🔥 EFECTO PARA CERRAR SUGERENCIAS AL HACER CLICK FUERA
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setShowPatientSuggestions(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const loadData = async () => {
         try {
             setLoading(true);
-            console.log('📅 CARGANDO DATOS...');
             const [appointmentsData, patientsData, servicesData] = await Promise.all([
                 api.getAppointments(),
                 api.getPatients(),
                 api.getServices()
             ]);
-            console.log('📅 DATOS RECIBIDOS - Citas:', appointmentsData.length);
             setAppointments(appointmentsData);
             setPatients(patientsData);
             setServices(servicesData);
@@ -95,15 +94,8 @@ export default function Agenda() {
         e.preventDefault();
         setSaving(true);
         try {
-            const dateTime = `${formData.date}T${formData.time}:00`;
-            console.log('📅 CREANDO CITA:', {
-                paciente: formData.patientId,
-                servicio: formData.serviceId,
-                profesional: user?.id,
-                sede: formData.sede,
-                fecha: dateTime
-            });
-            
+            const dateTime = `${formData.date}T${formData.time}:00-05:00`;
+
             await api.createAppointment({
                 patientId: formData.patientId,
                 serviceId: formData.serviceId,
@@ -112,13 +104,12 @@ export default function Agenda() {
                 date: dateTime,
                 status: 'scheduled'
             });
-            
-            console.log('📅 CITA CREADA EXITOSAMENTE');
+
             setIsModalOpen(false);
             resetForm();
             await loadData();
         } catch (error: any) {
-            console.error('📅 ERROR CREANDO CITA:', error);
+            console.error('Error creando cita:', error);
             alert('Error al crear cita: ' + error.message);
         } finally {
             setSaving(false);
@@ -127,11 +118,11 @@ export default function Agenda() {
 
     const handleUpdateAppointment = async () => {
         if (!selectedAppointment) return;
-        
+
         setSaving(true);
         try {
-            const dateTime = `${formData.date}T${formData.time}:00`;
-            
+            const dateTime = `${formData.date}T${formData.time}:00-05:00`;
+
             await api.updateAppointment(selectedAppointment.id, {
                 patientId: formData.patientId,
                 serviceId: formData.serviceId,
@@ -139,7 +130,7 @@ export default function Agenda() {
                 date: dateTime,
                 status: selectedAppointment.status
             });
-            
+
             setIsDetailsModalOpen(false);
             resetForm();
             await loadData();
@@ -156,7 +147,7 @@ export default function Agenda() {
         if (!confirm('¿Estás seguro de eliminar esta cita? Esta acción no se puede deshacer.')) {
             return;
         }
-        
+
         try {
             await api.deleteAppointment(id);
             setIsDetailsModalOpen(false);
@@ -181,6 +172,13 @@ export default function Agenda() {
         }
     };
 
+    // 🔥 FUNCIÓN PARA SELECCIONAR PACIENTE
+    const handleSelectPatient = (patient: Patient) => {
+        setFormData({ ...formData, patientId: patient.id });
+        setPatientSearchTerm(`${patient.name} - ${patient.cedula}`);
+        setShowPatientSuggestions(false);
+    };
+
     const resetForm = () => {
         setFormData({
             patientId: '',
@@ -189,10 +187,14 @@ export default function Agenda() {
             date: format(new Date(), "yyyy-MM-dd"),
             time: '10:00'
         });
+        setPatientSearchTerm('');
+        setShowPatientSuggestions(false);
     };
 
     const openEditModal = (appointment: Appointment) => {
         setSelectedAppointment(appointment);
+        const patient = patients.find(p => p.id === appointment.patientId);
+        setPatientSearchTerm(patient ? `${patient.name} - ${patient.cedula}` : '');
         setFormData({
             patientId: appointment.patientId,
             serviceId: appointment.serviceId,
@@ -213,28 +215,20 @@ export default function Agenda() {
     );
 
     const getAppointmentForSlot = (day: Date, hour: Date) => {
-        const apt = filteredAppointments.find(apt => {
+        const cellDateStr = format(day, 'yyyy-MM-dd');
+        const cellHourStr = format(hour, 'HH:00');
+
+        return filteredAppointments.find(apt => {
             const aptDate = parseISO(apt.date);
-            const sameDay = isSameDay(aptDate, day);
-            const sameHour = isSameHour(aptDate, hour);
-            
-            // LOG detallado para depuración
-            if (sameDay && sameHour) {
-                console.log('🎯 CITA ENCONTRADA:', {
-                    paciente: apt.patientName,
-                    fecha: format(aptDate, 'yyyy-MM-dd HH:mm'),
-                    diaGrid: format(day, 'yyyy-MM-dd HH:mm'),
-                    sede: apt.sede
-                });
-            }
-            
-            return sameDay && sameHour;
+            const aptDateStr = format(aptDate, 'yyyy-MM-dd');
+            const aptHourStr = format(aptDate, 'HH:00');
+
+            return aptDateStr === cellDateStr && aptHourStr === cellHourStr;
         });
-        return apt;
     };
 
     const getStatusColor = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'scheduled': return 'bg-blue-100 border-company-blue hover:bg-blue-200';
             case 'completed': return 'bg-green-100 border-green-600 hover:bg-green-200';
             case 'cancelled': return 'bg-red-100 border-red-600 hover:bg-red-200';
@@ -243,7 +237,7 @@ export default function Agenda() {
     };
 
     const getStatusText = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'scheduled': return 'Programada';
             case 'completed': return 'Completada';
             case 'cancelled': return 'Cancelada';
@@ -254,7 +248,7 @@ export default function Agenda() {
     return (
         <div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
             {loading && <div className="text-center py-4 text-slate-500">Cargando agenda...</div>}
-            
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
@@ -272,7 +266,7 @@ export default function Agenda() {
                         <option value="norte">Sede Norte</option>
                         <option value="sur">Sede Sur</option>
                     </select>
-                    <button 
+                    <button
                         onClick={() => {
                             resetForm();
                             setIsModalOpen(true);
@@ -303,21 +297,65 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={selectedAppointment ? handleUpdateAppointment : handleSubmit} className="space-y-4">
-                            <div>
+                            {/* 🔥 CAMPO DE PACIENTE CON AUTOCOMPLETADO */}
+                            <div className="relative" ref={searchRef}>
                                 <label className="block text-sm font-medium mb-1">Paciente *</label>
-                                <select
-                                    required
-                                    className="w-full border rounded-lg p-2"
-                                    value={formData.patientId}
-                                    onChange={(e) => setFormData({...formData, patientId: e.target.value})}
-                                >
-                                    <option value="">Seleccionar paciente</option>
-                                    {patients.map(patient => (
-                                        <option key={patient.id} value={patient.id}>
-                                            {patient.name} - {patient.cedula}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-company-blue outline-none"
+                                        placeholder="Buscar paciente por nombre o cédula..."
+                                        value={patientSearchTerm}
+                                        onChange={(e) => {
+                                            setPatientSearchTerm(e.target.value);
+                                            setShowPatientSuggestions(true);
+                                            if (formData.patientId) {
+                                                setFormData({ ...formData, patientId: '' });
+                                            }
+                                        }}
+                                        onFocus={() => setShowPatientSuggestions(true)}
+                                    />
+                                    {patientSearchTerm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPatientSearchTerm('');
+                                                setFormData({ ...formData, patientId: '' });
+                                                setShowPatientSuggestions(false);
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Lista de sugerencias */}
+                                {showPatientSuggestions && filteredPatients.length > 0 && (
+                                    <ul className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                        {filteredPatients.map((patient) => (
+                                            <li
+                                                key={patient.id}
+                                                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                                                onClick={() => handleSelectPatient(patient)}
+                                            >
+                                                <User className="w-4 h-4 text-slate-400" />
+                                                <div>
+                                                    <p className="text-sm font-medium">{patient.name}</p>
+                                                    <p className="text-xs text-slate-500">{patient.cedula}</p>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                {showPatientSuggestions && patientSearchTerm && filteredPatients.length === 0 && (
+                                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-4 text-center text-slate-500">
+                                        No se encontraron pacientes
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -326,7 +364,7 @@ export default function Agenda() {
                                     required
                                     className="w-full border rounded-lg p-2"
                                     value={formData.serviceId}
-                                    onChange={(e) => setFormData({...formData, serviceId: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
                                 >
                                     <option value="">Seleccionar servicio</option>
                                     {services.map(service => (
@@ -345,7 +383,7 @@ export default function Agenda() {
                                             type="radio"
                                             value="norte"
                                             checked={formData.sede === 'norte'}
-                                            onChange={(e) => setFormData({...formData, sede: e.target.value as Sede})}
+                                            onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
                                             className="mr-2"
                                         />
                                         Norte
@@ -355,7 +393,7 @@ export default function Agenda() {
                                             type="radio"
                                             value="sur"
                                             checked={formData.sede === 'sur'}
-                                            onChange={(e) => setFormData({...formData, sede: e.target.value as Sede})}
+                                            onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
                                             className="mr-2"
                                         />
                                         Sur
@@ -371,7 +409,7 @@ export default function Agenda() {
                                     min={format(new Date(), "yyyy-MM-dd")}
                                     className="w-full border rounded-lg p-2"
                                     value={formData.date}
-                                    onChange={(e) => setFormData({...formData, date: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                                 />
                             </div>
 
@@ -381,7 +419,7 @@ export default function Agenda() {
                                     required
                                     className="w-full border rounded-lg p-2"
                                     value={formData.time}
-                                    onChange={(e) => setFormData({...formData, time: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                                 >
                                     {Array.from({ length: 13 }).map((_, i) => {
                                         const hour = (i + 8).toString().padStart(2, '0');
@@ -483,31 +521,28 @@ export default function Agenda() {
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => handleChangeStatus(selectedAppointment.id, 'scheduled')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                            selectedAppointment.status === 'scheduled'
-                                                ? 'bg-blue-600 text-white'
-                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                        }`}
+                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'scheduled'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                            }`}
                                     >
                                         Programada
                                     </button>
                                     <button
                                         onClick={() => handleChangeStatus(selectedAppointment.id, 'completed')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                            selectedAppointment.status === 'completed'
-                                                ? 'bg-green-600 text-white'
-                                                : 'bg-green-100 text-green-600 hover:bg-green-200'
-                                        }`}
+                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'completed'
+                                            ? 'bg-green-600 text-white'
+                                            : 'bg-green-100 text-green-600 hover:bg-green-200'
+                                            }`}
                                     >
                                         Completada
                                     </button>
                                     <button
                                         onClick={() => handleChangeStatus(selectedAppointment.id, 'cancelled')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                            selectedAppointment.status === 'cancelled'
-                                                ? 'bg-red-600 text-white'
-                                                : 'bg-red-100 text-red-600 hover:bg-red-200'
-                                        }`}
+                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'cancelled'
+                                            ? 'bg-red-600 text-white'
+                                            : 'bg-red-100 text-red-600 hover:bg-red-200'
+                                            }`}
                                     >
                                         Cancelada
                                     </button>
@@ -567,9 +602,9 @@ export default function Agenda() {
                     <div className="grid grid-cols-8 border-b sticky top-0 bg-slate-50 z-10">
                         <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center">Hora</div>
                         {weekDays.map(day => (
-                            <div key={day.toString()} className={`p-3 border-r text-center ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}>
+                            <div key={day.toString()} className={`p-3 border-r text-center ${format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'bg-blue-50' : ''}`}>
                                 <p className="text-xs font-semibold text-slate-600 capitalize">{format(day, 'EEE', { locale: es })}</p>
-                                <p className={`text-sm font-bold ${isSameDay(day, new Date()) ? 'text-company-blue' : 'text-slate-800'}`}>
+                                <p className={`text-sm font-bold ${format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-company-blue' : 'text-slate-800'}`}>
                                     {format(day, 'd')}
                                 </p>
                             </div>
@@ -588,7 +623,7 @@ export default function Agenda() {
                                     return (
                                         <div key={day.toString()} className="p-1 border-r h-24 relative">
                                             {appointment ? (
-                                                <div 
+                                                <div
                                                     onClick={() => {
                                                         setSelectedAppointment(appointment);
                                                         setIsDetailsModalOpen(true);
@@ -607,7 +642,7 @@ export default function Agenda() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div 
+                                                <div
                                                     className="w-full h-full opacity-0 group-hover:opacity-100 flex justify-center items-center cursor-pointer hover:bg-slate-100"
                                                     onClick={() => {
                                                         setSelectedAppointment(null);
@@ -632,4 +667,4 @@ export default function Agenda() {
             </div>
         </div>
     );
-} 
+}
