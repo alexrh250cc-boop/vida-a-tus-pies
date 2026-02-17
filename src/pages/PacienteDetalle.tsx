@@ -3,10 +3,10 @@ import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { Patient, FichaPodologica, ClinicalNote, PatientFile } from '../types';
 import { useAuth } from '../lib/auth';
-import {
-    ArrowLeft, Save, Plus, FileText, Trash2,
+import { 
+    ArrowLeft, Save, Plus, FileText, Trash2, 
     Edit, Printer, Activity, Download, X,
-    Calendar, User, Phone, Mail, MapPin, Cake
+    Calendar, Cake
 } from 'lucide-react';
 import FichaPodologicaModal from '../components/ui/FichaPodologicaModal';
 
@@ -22,16 +22,16 @@ export default function PacienteDetalle() {
     const [loading, setLoading] = useState(true);
     const [loadingNotes, setLoadingNotes] = useState(false);
     const [loadingFiles, setLoadingFiles] = useState(false);
-
+    
     // Modal states
     const [showFichaModal, setShowFichaModal] = useState(false);
     const [selectedFicha, setSelectedFicha] = useState<FichaPodologica | null>(null);
-
+    
     // Edit mode for patient info
     const [isEditing, setIsEditing] = useState(false);
     const [editedPatient, setEditedPatient] = useState<Partial<Patient>>({});
     const [savingPatient, setSavingPatient] = useState(false);
-
+    
     // Clinical notes modal
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [editingNote, setEditingNote] = useState<ClinicalNote | null>(null);
@@ -41,7 +41,7 @@ export default function PacienteDetalle() {
         note_date: new Date().toISOString().split('T')[0]
     });
     const [savingNote, setSavingNote] = useState(false);
-
+    
     // File upload
     const [uploadingFile, setUploadingFile] = useState(false);
 
@@ -57,7 +57,7 @@ export default function PacienteDetalle() {
             const patientData = await api.getPatient(id!);
             setPatient(patientData);
             setEditedPatient(patientData || {});
-
+            
             await Promise.all([
                 loadFichas(),
                 loadClinicalNotes(),
@@ -110,7 +110,7 @@ export default function PacienteDetalle() {
         if (!confirm('¿Estás seguro de eliminar esta ficha? Esta acción no se puede deshacer.')) {
             return;
         }
-
+        
         try {
             await api.deleteFicha(fichaId);
             await loadFichas();
@@ -136,7 +136,7 @@ export default function PacienteDetalle() {
 
     const handleSavePatient = async () => {
         if (!patient?.id) return;
-
+        
         setSavingPatient(true);
         try {
             const updated = await api.updatePatient(patient.id, editedPatient);
@@ -187,7 +187,7 @@ export default function PacienteDetalle() {
     const handleNoteSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
-
+        
         setSavingNote(true);
         try {
             if (editingNote) {
@@ -219,7 +219,7 @@ export default function PacienteDetalle() {
 
     const handleDeleteNote = async (noteId: string) => {
         if (!confirm('¿Estás seguro de eliminar esta nota?')) return;
-
+        
         try {
             await api.deleteClinicalNote(noteId);
             await loadClinicalNotes();
@@ -251,7 +251,7 @@ export default function PacienteDetalle() {
 
     const handleDeleteFile = async (file: PatientFile) => {
         if (!confirm('¿Estás seguro de eliminar este archivo?')) return;
-
+        
         try {
             await api.deletePatientFile(file.id, file.file_path);
             await loadPatientFiles();
@@ -262,8 +262,8 @@ export default function PacienteDetalle() {
         }
     };
 
+    // Función para obtener icono según tipo de archivo
     const getFileIcon = (fileType: string) => {
-        if (fileType.startsWith('image/')) return '🖼️';
         if (fileType === 'application/pdf') return '📄';
         return '📁';
     };
@@ -301,7 +301,7 @@ export default function PacienteDetalle() {
         return (
             <div className="text-center py-12">
                 <p className="text-slate-500">Paciente no encontrado</p>
-                <button
+                <button 
                     onClick={() => navigate('/pacientes')}
                     className="mt-4 text-company-blue hover:underline"
                 >
@@ -318,8 +318,8 @@ export default function PacienteDetalle() {
             {/* Header con botones */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/pacientes')}
+                    <button 
+                        onClick={() => navigate('/pacientes')} 
                         className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                         title="Volver a la lista"
                     >
@@ -330,7 +330,7 @@ export default function PacienteDetalle() {
                         <p className="text-slate-500 text-sm">C.I. {patient.cedula}</p>
                     </div>
                 </div>
-
+                
                 <div className="flex gap-2">
                     <button
                         onClick={() => {
@@ -356,7 +356,7 @@ export default function PacienteDetalle() {
             {showFichaModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-auto">
                     <div className="relative w-full max-w-4xl m-4">
-                        <FichaPodologicaModal
+                        <FichaPodologicaModal 
                             patientId={id!}
                             patientData={patient}
                             ficha={selectedFicha}
@@ -393,7 +393,7 @@ export default function PacienteDetalle() {
                                     required
                                     className="w-full border rounded-lg p-2"
                                     value={noteForm.title}
-                                    onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })}
+                                    onChange={(e) => setNoteForm({...noteForm, title: e.target.value})}
                                     placeholder="Ej: Consulta de control"
                                 />
                             </div>
@@ -404,7 +404,7 @@ export default function PacienteDetalle() {
                                     type="date"
                                     className="w-full border rounded-lg p-2"
                                     value={noteForm.note_date}
-                                    onChange={(e) => setNoteForm({ ...noteForm, note_date: e.target.value })}
+                                    onChange={(e) => setNoteForm({...noteForm, note_date: e.target.value})}
                                 />
                             </div>
 
@@ -415,7 +415,7 @@ export default function PacienteDetalle() {
                                     rows={5}
                                     className="w-full border rounded-lg p-2"
                                     value={noteForm.content}
-                                    onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })}
+                                    onChange={(e) => setNoteForm({...noteForm, content: e.target.value})}
                                     placeholder="Detalles de la consulta, diagnóstico, tratamiento..."
                                 />
                             </div>
@@ -446,19 +446,21 @@ export default function PacienteDetalle() {
                 <div className="border-b px-6 flex gap-6 overflow-x-auto">
                     <button
                         onClick={() => setActiveTab('info')}
-                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'info'
-                                ? 'border-company-blue text-company-blue'
+                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                            activeTab === 'info' 
+                                ? 'border-company-blue text-company-blue' 
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
-                            }`}
+                        }`}
                     >
                         Información Personal
                     </button>
                     <button
                         onClick={() => setActiveTab('fichas')}
-                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1 ${activeTab === 'fichas'
-                                ? 'border-company-blue text-company-blue'
+                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1 ${
+                            activeTab === 'fichas' 
+                                ? 'border-company-blue text-company-blue' 
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
-                            }`}
+                        }`}
                     >
                         <Activity className="w-4 h-4" />
                         Fichas Podológicas
@@ -470,10 +472,11 @@ export default function PacienteDetalle() {
                     </button>
                     <button
                         onClick={() => setActiveTab('historial')}
-                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'historial'
-                                ? 'border-company-blue text-company-blue'
+                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                            activeTab === 'historial' 
+                                ? 'border-company-blue text-company-blue' 
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
-                            }`}
+                        }`}
                     >
                         Historial Clínico
                         {clinicalNotes.length > 0 && (
@@ -484,10 +487,11 @@ export default function PacienteDetalle() {
                     </button>
                     <button
                         onClick={() => setActiveTab('archivos')}
-                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'archivos'
-                                ? 'border-company-blue text-company-blue'
+                        className={`py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                            activeTab === 'archivos' 
+                                ? 'border-company-blue text-company-blue' 
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
-                            }`}
+                        }`}
                     >
                         Archivos y Fotos
                         {patientFiles.length > 0 && (
@@ -505,10 +509,11 @@ export default function PacienteDetalle() {
                             <div className="flex justify-end">
                                 <button
                                     onClick={handleEditToggle}
-                                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${isEditing
-                                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
+                                        isEditing 
+                                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' 
                                             : 'bg-company-blue text-white hover:bg-blue-600'
-                                        }`}
+                                    }`}
                                 >
                                     <Edit className="w-4 h-4" />
                                     {isEditing ? 'Cancelar' : 'Editar'}
@@ -518,8 +523,8 @@ export default function PacienteDetalle() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
-                                    <input
-                                        type="text"
+                                    <input 
+                                        type="text" 
                                         value={isEditing ? editedPatient.name || '' : patient.name}
                                         onChange={(e) => handlePatientChange('name', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -528,8 +533,8 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Cédula / RUC</label>
-                                    <input
-                                        type="text"
+                                    <input 
+                                        type="text" 
                                         value={isEditing ? editedPatient.cedula || '' : patient.cedula}
                                         onChange={(e) => handlePatientChange('cedula', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -538,8 +543,8 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-                                    <input
-                                        type="text"
+                                    <input 
+                                        type="text" 
                                         value={isEditing ? editedPatient.phone || '' : patient.phone}
                                         onChange={(e) => handlePatientChange('phone', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -548,8 +553,8 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Correo Electrónico</label>
-                                    <input
-                                        type="email"
+                                    <input 
+                                        type="email" 
                                         value={isEditing ? editedPatient.email || '' : patient.email}
                                         onChange={(e) => handlePatientChange('email', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -558,8 +563,8 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Nacimiento</label>
-                                    <input
-                                        type="date"
+                                    <input 
+                                        type="date" 
                                         value={isEditing ? editedPatient.birth_date || '' : patient.birth_date || ''}
                                         onChange={(e) => handlePatientChange('birth_date', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -574,8 +579,8 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-                                    <input
-                                        type="text"
+                                    <input 
+                                        type="text" 
                                         value={isEditing ? editedPatient.address || '' : patient.address || ''}
                                         onChange={(e) => handlePatientChange('address', e.target.value)}
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
@@ -585,10 +590,10 @@ export default function PacienteDetalle() {
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Antecedentes Médicos</label>
-                                    <textarea
+                                    <textarea 
                                         value={isEditing ? editedPatient.history || '' : patient.history}
                                         onChange={(e) => handlePatientChange('history', e.target.value)}
-                                        rows={4}
+                                        rows={4} 
                                         className={`w-full border rounded-lg px-3 py-2 ${!isEditing && 'bg-slate-50'}`}
                                         readOnly={!isEditing}
                                     />
@@ -661,19 +666,19 @@ export default function PacienteDetalle() {
                                                     </p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button
+                                                    <button 
                                                         onClick={() => {
                                                             setSelectedFicha(ficha);
                                                             setShowFichaModal(true);
                                                         }}
-                                                        className="p-1 hover:bg-white rounded"
+                                                        className="p-1 hover:bg-white rounded" 
                                                         title="Editar ficha"
                                                     >
                                                         <Edit className="w-4 h-4 text-slate-500" />
                                                     </button>
-                                                    <button
+                                                    <button 
                                                         onClick={() => handleDeleteFicha(ficha.id)}
-                                                        className="p-1 hover:bg-white rounded"
+                                                        className="p-1 hover:bg-white rounded" 
                                                         title="Eliminar ficha"
                                                     >
                                                         <Trash2 className="w-4 h-4 text-red-500" />
@@ -771,8 +776,9 @@ export default function PacienteDetalle() {
                                     />
                                     <label
                                         htmlFor="file-upload"
-                                        className={`inline-flex items-center gap-2 px-4 py-2 bg-company-blue text-white rounded-lg text-sm font-medium cursor-pointer hover:bg-blue-600 transition-colors ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''
-                                            }`}
+                                        className={`inline-flex items-center gap-2 px-4 py-2 bg-company-blue text-white rounded-lg text-sm font-medium cursor-pointer hover:bg-blue-600 transition-colors ${
+                                            uploadingFile ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
                                     >
                                         <Plus className="w-4 h-4" />
                                         {uploadingFile ? 'Subiendo...' : 'Subir Archivo'}
@@ -796,19 +802,19 @@ export default function PacienteDetalle() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     {patientFiles.map((file) => {
                                         const publicUrl = api.getFilePublicUrl(file.file_path);
-                                        const isImage = file.file_type.startsWith('image/');
-
+                                        const isImage = file.file_type?.startsWith('image/');
+                                        
                                         return (
-                                            <div key={file.id} className="bg-white rounded-lg border p-3 relative group hover:shadow-md transition-shadow">
-                                                <div className="aspect-square bg-slate-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                                            <div key={file.id} className="bg-white rounded-lg border p-2 relative group hover:shadow-md transition-shadow">
+                                                <div className="aspect-square bg-slate-100 rounded-lg mb-2 overflow-hidden">
                                                     {isImage ? (
-                                                        <img
-                                                            src={publicUrl}
+                                                        <img 
+                                                            src={publicUrl} 
                                                             alt={file.name}
-                                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                                         />
                                                     ) : (
-                                                        <div className="text-4xl">
+                                                        <div className="w-full h-full flex items-center justify-center text-4xl">
                                                             {getFileIcon(file.file_type)}
                                                         </div>
                                                     )}
