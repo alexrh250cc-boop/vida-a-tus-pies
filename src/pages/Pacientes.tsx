@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
-import { 
+import {
     Search, Plus, FileText, Phone, AlertCircle, X,
     Edit, Trash2, ChevronLeft, ChevronRight,
     Mail, Calendar, User, RefreshCw
@@ -15,7 +15,7 @@ export default function Pacientes() {
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    
+
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
@@ -27,7 +27,7 @@ export default function Pacientes() {
         history: ''
     });
     const [saving, setSaving] = useState(false);
-    
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(5);
@@ -111,7 +111,7 @@ export default function Pacientes() {
         if (!confirm('¿Estás seguro de eliminar este paciente? Esta acción eliminará también todas sus citas y fichas médicas.')) {
             return;
         }
-        
+
         try {
             await api.deletePatient(id);
             alert('Paciente eliminado correctamente');
@@ -135,6 +135,30 @@ export default function Pacientes() {
         } catch {
             return 'N/A';
         }
+    };
+
+    const getAvatarColor = (name: string) => {
+        const colors = [
+            'bg-red-100 text-red-700',
+            'bg-orange-100 text-orange-700',
+            'bg-amber-100 text-amber-700',
+            'bg-yellow-100 text-yellow-700',
+            'bg-lime-100 text-lime-700',
+            'bg-green-100 text-green-700',
+            'bg-emerald-100 text-emerald-700',
+            'bg-teal-100 text-teal-700',
+            'bg-cyan-100 text-cyan-700',
+            'bg-sky-100 text-sky-700',
+            'bg-blue-100 text-blue-700',
+            'bg-indigo-100 text-indigo-700',
+            'bg-violet-100 text-violet-700',
+            'bg-purple-100 text-purple-700',
+            'bg-fuchsia-100 text-fuchsia-700',
+            'bg-pink-100 text-pink-700',
+            'bg-rose-100 text-rose-700',
+        ];
+        const index = name.length % colors.length;
+        return colors[index];
     };
 
     // Paginación
@@ -171,14 +195,14 @@ export default function Pacientes() {
                     <p className="text-slate-500 text-sm">Administra el historial clínico</p>
                 </div>
                 <div className="flex gap-2">
-                    <button 
+                    <button
                         onClick={() => openModal()}
                         className="bg-company-blue text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 flex items-center gap-2 transition-colors"
                     >
                         <Plus className="w-4 h-4" />
                         Nuevo Paciente
                     </button>
-                    <button 
+                    <button
                         onClick={loadPatients}
                         className="border px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center gap-2 transition-colors"
                         title="Actualizar lista"
@@ -209,7 +233,7 @@ export default function Pacientes() {
                                     required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
                                     value={formData.name}
-                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="Ej: Juan Pérez"
                                 />
                             </div>
@@ -221,7 +245,7 @@ export default function Pacientes() {
                                     required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
                                     value={formData.cedula}
-                                    onChange={(e) => setFormData({...formData, cedula: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
                                     placeholder="Ej: 12345678-9"
                                 />
                             </div>
@@ -233,7 +257,7 @@ export default function Pacientes() {
                                     required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
                                     value={formData.phone}
-                                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                     placeholder="Ej: 0995541483"
                                 />
                             </div>
@@ -245,7 +269,7 @@ export default function Pacientes() {
                                     required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
                                     value={formData.email}
-                                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     placeholder="Ej: email@ejemplo.com"
                                 />
                             </div>
@@ -256,7 +280,7 @@ export default function Pacientes() {
                                     rows={3}
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
                                     value={formData.history}
-                                    onChange={(e) => setFormData({...formData, history: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, history: e.target.value })}
                                     placeholder="Antecedentes médicos, alergias, observaciones..."
                                 />
                             </div>
@@ -282,93 +306,97 @@ export default function Pacientes() {
                 </div>
             )}
 
-            {/* Buscador */}
-            <div className="bg-white rounded-xl shadow-sm border p-4">
-                <div className="relative max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                    <input
-                        type="text"
-                        placeholder="Buscar por nombre, cédula, teléfono o email..."
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-company-blue outline-none"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            {/* Tabla de pacientes con buscador integrado */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                {/* Buscador y filtros */}
+                <div className="p-4 border-b bg-slate-50/50 flex flex-col sm:flex-row gap-4 justify-between items-center">
+                    <div className="relative w-full max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre, cédula, teléfono..."
+                            className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-company-blue focus:border-transparent outline-none shadow-sm"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <p className="text-xs text-slate-500 whitespace-nowrap">
+                        <strong>{filteredPatients.length}</strong> pacientes encontrados
+                    </p>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
-                    {filteredPatients.length} pacientes encontrados
-                </p>
-            </div>
 
-            {/* Tabla de pacientes */}
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
+                    <table className="min-w-full">
+                        <thead className="bg-slate-50 border-b">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Paciente</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Contacto</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Historial</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Registro</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Paciente</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contacto</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Historial</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Registro</th>
+                                <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-200">
+                        <tbody className="bg-white divide-y divide-slate-100">
                             {currentItems.map((patient) => (
-                                <tr key={patient.id} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                <tr key={patient.id} className="hover:bg-slate-50/80 transition-colors group">
+                                    <td className="px-6 py-5 whitespace-nowrap">
                                         <div className="flex items-center">
-                                            <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gradient-to-br from-company-blue to-blue-400 flex items-center justify-center font-bold text-white shadow-sm">
+                                            <div className={`h-11 w-11 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ${getAvatarColor(patient.name)}`}>
                                                 {patient.name?.charAt(0).toUpperCase() || '?'}
                                             </div>
                                             <div className="ml-4">
-                                                <div className="text-sm font-medium text-slate-900">{patient.name}</div>
-                                                <div className="text-sm text-slate-500 flex items-center gap-1">
+                                                <div className="text-sm font-semibold text-slate-900">{patient.name}</div>
+                                                <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                                                     <User className="w-3 h-3" />
                                                     {patient.cedula}
                                                 </div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-slate-900 flex items-center">
-                                            <Phone className="w-3 h-3 mr-1 text-slate-400" />
-                                            {patient.phone}
-                                        </div>
-                                        <div className="text-sm text-slate-500 flex items-center">
-                                            <Mail className="w-3 h-3 mr-1 text-slate-400" />
-                                            {patient.email}
+                                    <td className="px-6 py-5 whitespace-nowrap">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="text-sm text-slate-700 flex items-center">
+                                                <Phone className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                                                {patient.phone}
+                                            </div>
+                                            {patient.email && (
+                                                <div className="text-xs text-slate-500 flex items-center">
+                                                    <Mail className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                                                    {patient.email}
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <p className="text-sm text-slate-900 truncate max-w-xs" title={patient.history}>
-                                            {patient.history || 'Sin historial'}
+                                    <td className="px-6 py-5">
+                                        <p className="text-sm text-slate-600 truncate max-w-xs" title={patient.history}>
+                                            {patient.history || <span className="text-slate-400 italic">Sin historial registrado</span>}
                                         </p>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                    <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500">
                                         <div className="flex items-center">
-                                            <Calendar className="w-3 h-3 mr-1 text-slate-400" />
+                                            <Calendar className="w-3.5 h-3.5 mr-2 text-slate-400" />
                                             {formatDate(patient.createdAt)}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex items-center justify-end gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
-                                            <button 
+                                    <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
+                                        <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-200">
+                                            <button
                                                 onClick={() => navigate(`/pacientes/${patient.id}`)}
-                                                className="text-company-blue hover:text-blue-900 p-1 hover:bg-blue-50 rounded-lg transition-colors"
+                                                className="text-company-blue bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
                                                 title="Ver ficha completa"
                                             >
                                                 <FileText className="w-4 h-4" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => openModal(patient)}
-                                                className="text-slate-600 hover:text-slate-900 p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                                                className="text-slate-600 bg-slate-100 hover:bg-slate-200 p-2 rounded-lg transition-colors"
                                                 title="Editar paciente"
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => handleDelete(patient.id)}
-                                                className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded-lg transition-colors"
+                                                className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors"
                                                 title="Eliminar paciente"
                                             >
                                                 <Trash2 className="w-4 h-4" />
@@ -379,16 +407,18 @@ export default function Pacientes() {
                             ))}
                             {filteredPatients.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                                        <User className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                                        <p className="text-lg font-medium mb-1">No se encontraron pacientes</p>
-                                        <p className="text-sm text-slate-400 mb-4">
-                                            {searchTerm ? 'Prueba con otros términos de búsqueda' : 'Comienza agregando tu primer paciente'}
+                                    <td colSpan={5} className="px-6 py-16 text-center text-slate-500">
+                                        <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <Search className="w-8 h-8 text-slate-300" />
+                                        </div>
+                                        <p className="text-lg font-medium text-slate-900 mb-1">No se encontraron pacientes</p>
+                                        <p className="text-sm text-slate-400 mb-6 max-w-xs mx-auto">
+                                            {searchTerm ? `No hay resultados para "${searchTerm}"` : 'Comienza agregando tu primer paciente al sistema'}
                                         </p>
                                         {!searchTerm && (
                                             <button
                                                 onClick={() => openModal()}
-                                                className="inline-flex items-center gap-2 text-company-blue hover:text-blue-700 font-medium"
+                                                className="inline-flex items-center gap-2 bg-company-blue text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
                                             >
                                                 <Plus className="w-4 h-4" />
                                                 Agregar primer paciente
@@ -404,28 +434,24 @@ export default function Pacientes() {
                 {/* Paginación */}
                 {filteredPatients.length > 0 && (
                     <div className="px-6 py-4 border-t flex items-center justify-between bg-slate-50">
-                        <p className="text-sm text-slate-600">
-                            Mostrando <span className="font-medium">{indexOfFirstItem + 1}</span> a{' '}
-                            <span className="font-medium">
-                                {Math.min(indexOfLastItem, filteredPatients.length)}
-                            </span>{' '}
-                            de <span className="font-medium">{filteredPatients.length}</span> pacientes
+                        <p className="text-xs text-slate-500">
+                            Mostrando <span className="font-medium text-slate-900">{indexOfFirstItem + 1}</span> - <span className="font-medium text-slate-900">{Math.min(indexOfLastItem, filteredPatients.length)}</span> de <span className="font-medium text-slate-900">{filteredPatients.length}</span>
                         </p>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={currentPage === 1}
-                                className="p-2 border rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="p-2 border rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors bg-white shadow-sm"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                             </button>
-                            <span className="px-4 py-2 border rounded-lg bg-white">
-                                Página {currentPage} de {totalPages}
+                            <span className="px-4 py-2 border rounded-lg bg-white text-sm font-medium shadow-sm min-w-[3rem] text-center">
+                                {currentPage}
                             </span>
                             <button
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 disabled={currentPage === totalPages}
-                                className="p-2 border rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="p-2 border rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors bg-white shadow-sm"
                             >
                                 <ChevronRight className="w-4 h-4" />
                             </button>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom'; // ← Importa Outlet
+import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import {
     LayoutDashboard,
@@ -12,8 +12,9 @@ import {
     X
 } from 'lucide-react';
 import clsx from 'clsx';
+import Logo from '../ui/Logo';
 
-export default function Layout() { // ← Elimina { children }
+export default function Layout() {
     const { user, logout } = useAuth();
     const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -28,25 +29,22 @@ export default function Layout() { // ← Elimina { children }
 
     return (
         <div className="min-h-screen bg-slate-50 lg:flex">
-            {/* Mobile Header */}
-            <div className="lg:hidden bg-white border-b p-4 flex items-center justify-between">
-                <span className="font-bold text-xl text-company-blue">VIDA A TUS PIES</span>
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                    {isSidebarOpen ? <X /> : <Menu />}
+            {/* Mobile header */}
+            <div className="lg:hidden bg-white border-b p-4 flex items-center justify-between sticky top-0 z-40">
+                <Logo variant="header" />
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg">
+                    {isSidebarOpen ? <X className="w-6 h-6 text-slate-600" /> : <Menu className="w-6 h-6 text-slate-600" />}
                 </button>
             </div>
 
             {/* Sidebar */}
             <div className={clsx(
-                "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
+                "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0 shadow-lg lg:shadow-none",
                 isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             )}>
                 <div className="flex flex-col h-full">
                     <div className="p-6 border-b flex items-center justify-center">
-                        <div className="text-center">
-                            <h1 className="text-2xl font-bold text-company-green">VIDA</h1>
-                            <p className="text-sm text-company-blue font-medium tracking-wider">A TUS PIES</p>
-                        </div>
+                        <Logo variant="sidebar" />
                     </div>
 
                     <nav className="flex-1 p-4 space-y-1">

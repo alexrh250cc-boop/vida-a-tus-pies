@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Lock, Mail } from 'lucide-react';
+import Logo from '../components/ui/Logo';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -27,14 +28,14 @@ export default function Login() {
             if (signInError) {
                 throw signInError; // ✅ CORREGIDO: Usamos signInError aquí
             }
-            
+
             // Si llegamos aquí, el login fue exitoso
             console.log("Login exitoso, redirigiendo...");
             navigate('/');
-            
+
         } catch (err: any) {
             console.error("Error completo:", err);
-            
+
             // Manejo específico de errores de Supabase
             if (err.message?.includes("Email logins are disabled")) {
                 setError('El inicio de sesión con email está desactivado. Habilítalo en Supabase (Authentication → Providers → Email)');
@@ -49,10 +50,8 @@ export default function Login() {
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
             <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-company-green mb-2">VIDA</h1>
-                    <p className="text-company-blue font-medium tracking-wider">A TUS PIES</p>
-                    <h2 className="text-xl font-semibold text-slate-800 mt-6">Iniciar Sesión</h2>
+                <div className="text-center mb-8 flex justify-center">
+                    <Logo variant="sidebar" className="scale-110" />
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -61,7 +60,7 @@ export default function Login() {
                             {error}
                         </div>
                     )}
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
                             Correo Electrónico

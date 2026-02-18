@@ -4,10 +4,16 @@ import { useAuth } from '../lib/auth';
 import {
     format,
     startOfWeek,
+    endOfWeek,
+    startOfMonth,
+    endOfMonth,
+    eachDayOfInterval,
     addDays,
     startOfDay,
     addHours,
-    parseISO
+    parseISO,
+    isSameMonth,
+    isSameDay
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
@@ -21,6 +27,7 @@ export default function Agenda() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [view, setView] = useState<'day' | 'week' | 'month'>('week');
     const [selectedSede, setSelectedSede] = useState<Sede | 'all'>('all');
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -206,8 +213,8 @@ export default function Agenda() {
         setIsModalOpen(true);
     };
 
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-    const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
+
     const hours = Array.from({ length: 13 }).map((_, i) => addHours(startOfDay(currentDate), i + 8));
 
     const filteredAppointments = appointments.filter(apt =>
@@ -227,14 +234,7 @@ export default function Agenda() {
         });
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'scheduled': return 'bg-blue-100 border-company-blue hover:bg-blue-200';
-            case 'completed': return 'bg-green-100 border-green-600 hover:bg-green-200';
-            case 'cancelled': return 'bg-red-100 border-red-600 hover:bg-red-200';
-            default: return 'bg-blue-100 border-company-blue hover:bg-blue-200';
-        }
-    };
+
 
     const getStatusText = (status: string) => {
         switch (status) {
@@ -245,6 +245,31 @@ export default function Agenda() {
         }
     };
 
+    // 🔥 COLOR CODING BY SERVICE
+    const getServiceColor = (serviceName: string) => {
+        const name = serviceName.toLowerCase();
+        if (name.includes('consulta')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200';
+        if (name.includes('uña') || name.includes('corte')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200';
+        if (name.includes('hongo') || name.includes('tratamiento')) return 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200';
+        if (name.includes('plantilla') || name.includes('orto')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200';
+        return 'bg-blue-100 border-company-blue text-blue-800 hover:bg-blue-200';
+    };
+
+    // View Logic
+    const getDaysToShow = () => {
+        if (view === 'day') {
+            return [currentDate];
+        }
+        if (view === 'week') {
+            const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+            return Array.from({ length: 7 }).map((_, i) => addDays(start, i));
+        }
+        // Month view handled separately
+        return [];
+    };
+
+    const daysToShow = getDaysToShow();
+
     return (
         <div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
             {loading && <div className="text-center py-4 text-slate-500">Cargando agenda...</div>}
@@ -254,6 +279,27 @@ export default function Agenda() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Agenda</h1>
                     <p className="text-slate-500 text-sm">Gestiona las citas de las sedes</p>
+                </div>
+
+                <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button
+                        onClick={() => setView('day')}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'day' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Día
+                    </button>
+                    <button
+                        onClick={() => setView('week')}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'week' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Semana
+                    </button>
+                    <button
+                        onClick={() => setView('month')}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'month' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Mes
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -583,87 +629,164 @@ export default function Agenda() {
             )}
 
             {/* Navegación de semanas */}
-            <div className="flex items-center justify-between bg-white p-3 rounded-lg border">
-                <button onClick={() => setCurrentDate(addDays(currentDate, -7))} className="p-1 hover:bg-slate-100 rounded">
-                    <ChevronLeft className="w-5 h-5" />
-                </button>
-                <span className="font-semibold capitalize">
-                    {format(weekStart, "MMMM yyyy", { locale: es })}
-                </span>
-                <button onClick={() => setCurrentDate(addDays(currentDate, 7))} className="p-1 hover:bg-slate-100 rounded">
-                    <ChevronRight className="w-5 h-5" />
-                </button>
+            {/* Navegación de fecha */}
+            <div className="flex items-center justify-between bg-white p-3 rounded-lg border shadow-sm">
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 text-xs font-medium border rounded hover:bg-slate-50">
+                        Hoy
+                    </button>
+                    <div className="flex">
+                        <button onClick={() => {
+                            if (view === 'day') setCurrentDate(addDays(currentDate, -1));
+                            else if (view === 'week') setCurrentDate(addDays(currentDate, -7));
+                            else setCurrentDate(startOfMonth(addDays(startOfMonth(currentDate), -1)));
+                        }} className="p-1 hover:bg-slate-100 rounded">
+                            <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => {
+                            if (view === 'day') setCurrentDate(addDays(currentDate, 1));
+                            else if (view === 'week') setCurrentDate(addDays(currentDate, 7));
+                            else setCurrentDate(startOfMonth(addDays(endOfMonth(currentDate), 1)));
+                        }} className="p-1 hover:bg-slate-100 rounded">
+                            <ChevronRight className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <span className="font-bold text-lg capitalize ml-2">
+                        {format(currentDate, view === 'day' ? "EEEE, d 'de' MMMM yyyy" : "MMMM yyyy", { locale: es })}
+                    </span>
+                </div>
             </div>
 
             {/* Grid de agenda */}
             <div className="flex-1 overflow-auto bg-white rounded-lg border shadow-sm">
-                <div className="min-w-[800px]">
-                    {/* Header de días */}
-                    <div className="grid grid-cols-8 border-b sticky top-0 bg-slate-50 z-10">
-                        <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center">Hora</div>
-                        {weekDays.map(day => (
-                            <div key={day.toString()} className={`p-3 border-r text-center ${format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'bg-blue-50' : ''}`}>
-                                <p className="text-xs font-semibold text-slate-600 capitalize">{format(day, 'EEE', { locale: es })}</p>
-                                <p className={`text-sm font-bold ${format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-company-blue' : 'text-slate-800'}`}>
-                                    {format(day, 'd')}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Grid de horas */}
-                    <div className="divide-y">
-                        {hours.map(hour => (
-                            <div key={hour.toString()} className="grid grid-cols-8 group hover:bg-slate-50">
-                                <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center">
-                                    {format(hour, 'HH:mm')}
+                {view === 'month' ? (
+                    // VISTA MENSUAL
+                    <div className="min-w-[800px] h-full flex flex-col">
+                        <div className="grid grid-cols-7 border-b bg-slate-50">
+                            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
+                                <div key={day} className="p-2 text-center text-sm font-semibold text-slate-600 border-r last:border-r-0">
+                                    {day}
                                 </div>
-                                {weekDays.map(day => {
-                                    const appointment = getAppointmentForSlot(day, hour);
-                                    return (
-                                        <div key={day.toString()} className="p-1 border-r h-24 relative">
-                                            {appointment ? (
-                                                <div
-                                                    onClick={() => {
-                                                        setSelectedAppointment(appointment);
-                                                        setIsDetailsModalOpen(true);
-                                                    }}
-                                                    className={`absolute inset-1 ${getStatusColor(appointment.status)} border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer transition-colors`}
-                                                >
-                                                    <p className="font-semibold text-blue-800 truncate">{appointment.patientName}</p>
-                                                    <p className="text-blue-600 truncate text-[10px]">{appointment.serviceName}</p>
-                                                    <div className="mt-1 flex items-center gap-1">
-                                                        <span className="bg-white/50 px-1 rounded text-[10px] text-blue-800">
-                                                            {appointment.sede === 'norte' ? 'N' : 'S'}
-                                                        </span>
-                                                        <span className="text-[10px] text-blue-600 capitalize">
-                                                            {getStatusText(appointment.status)}
-                                                        </span>
-                                                    </div>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-7 grid-rows-5 flex-1 divide-x divide-y">
+                            {eachDayOfInterval({
+                                start: startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+                                end: endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 })
+                            }).map(day => {
+                                const dayAppointments = filteredAppointments.filter(apt =>
+                                    isSameDay(parseISO(apt.date), day)
+                                );
+                                const isCurrentMonth = isSameMonth(day, currentDate);
+                                const isToday = isSameDay(day, new Date());
+
+                                return (
+                                    <div
+                                        key={day.toISOString()}
+                                        className={`min-h-[100px] p-2 hover:bg-slate-50 transition-colors ${!isCurrentMonth ? 'bg-slate-50/50' : ''}`}
+                                        onClick={() => {
+                                            setCurrentDate(day);
+                                            setView('day');
+                                        }}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-company-blue text-white' : isCurrentMonth ? 'text-slate-700' : 'text-slate-400'}`}>
+                                                {format(day, 'd')}
+                                            </span>
+                                            {dayAppointments.length > 0 && (
+                                                <span className="text-xs font-bold text-company-blue bg-blue-100 px-1.5 rounded-full">
+                                                    {dayAppointments.length}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1 overflow-y-auto max-h-[80px]">
+                                            {dayAppointments.slice(0, 3).map(apt => (
+                                                <div key={apt.id} className={`text-[10px] truncate px-1 rounded border-l-2 ${getServiceColor(apt.serviceName)}`}>
+                                                    {format(parseISO(apt.date), 'HH:mm')} {apt.patientName}
                                                 </div>
-                                            ) : (
-                                                <div
-                                                    className="w-full h-full opacity-0 group-hover:opacity-100 flex justify-center items-center cursor-pointer hover:bg-slate-100"
-                                                    onClick={() => {
-                                                        setSelectedAppointment(null);
-                                                        setFormData({
-                                                            ...formData,
-                                                            date: format(day, 'yyyy-MM-dd'),
-                                                            time: format(hour, 'HH:00')
-                                                        });
-                                                        setIsModalOpen(true);
-                                                    }}
-                                                >
-                                                    <Plus className="w-4 h-4 text-slate-400" />
+                                            ))}
+                                            {dayAppointments.length > 3 && (
+                                                <div className="text-[10px] text-slate-400 text-center">
+                                                    + {dayAppointments.length - 3} más
                                                 </div>
                                             )}
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        ))}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    // VISTA SEMANAL Y DIARIA
+                    <div className="min-w-[800px]">
+                        {/* Header de días */}
+                        <div className={`grid border-b sticky top-0 bg-slate-50 z-10 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
+                            <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center w-20">Hora</div>
+                            {daysToShow.map(day => (
+                                <div key={day.toString()} className={`p-3 border-r text-center ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}>
+                                    <p className="text-xs font-semibold text-slate-600 capitalize">{format(day, 'EEE', { locale: es })}</p>
+                                    <p className={`text-sm font-bold ${isSameDay(day, new Date()) ? 'text-company-blue' : 'text-slate-800'}`}>
+                                        {format(day, 'd')}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Grid de horas */}
+                        <div className="divide-y">
+                            {hours.map(hour => (
+                                <div key={hour.toString()} className={`grid group hover:bg-slate-50 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
+                                    <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center w-20">
+                                        {format(hour, 'HH:mm')}
+                                    </div>
+                                    {daysToShow.map(day => {
+                                        const appointment = getAppointmentForSlot(day, hour);
+                                        return (
+                                            <div key={day.toString()} className={`p-1 border-r h-24 relative transition-colors ${!appointment ? 'hover:bg-gray-100 cursor-pointer' : ''}`}>
+                                                {appointment ? (
+                                                    <div
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedAppointment(appointment);
+                                                            setIsDetailsModalOpen(true);
+                                                        }}
+                                                        className={`absolute inset-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all hover:scale-[1.02] hover:shadow-md z-10 ${getServiceColor(appointment.serviceName)}`}
+                                                    >
+                                                        <div className="flex justify-between items-start">
+                                                            <p className="font-bold truncate">{appointment.patientName}</p>
+                                                            <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                        </div>
+                                                        <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
+                                                        <div className="mt-1 flex items-center gap-1">
+                                                            <span className="bg-white/50 px-1 rounded text-[10px]">
+                                                                {getStatusText(appointment.status)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        className="w-full h-full flex justify-center items-center opacity-0 group-hover:opacity-100 hover:opacity-100"
+                                                        onClick={() => {
+                                                            setSelectedAppointment(null);
+                                                            setFormData({
+                                                                ...formData,
+                                                                date: format(day, 'yyyy-MM-dd'),
+                                                                time: format(hour, 'HH:00')
+                                                            });
+                                                            setIsModalOpen(true);
+                                                        }}
+                                                    >
+                                                        <Plus className="w-6 h-6 text-slate-400 bg-slate-200 rounded-full p-1" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
