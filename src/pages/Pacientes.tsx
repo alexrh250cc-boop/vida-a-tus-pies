@@ -231,7 +231,7 @@ export default function Pacientes() {
                                 <input
                                     type="text"
                                     required
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="Ej: Juan Pérez"
@@ -243,7 +243,7 @@ export default function Pacientes() {
                                 <input
                                     type="text"
                                     required
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.cedula}
                                     onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
                                     placeholder="Ej: 12345678-9"
@@ -255,7 +255,7 @@ export default function Pacientes() {
                                 <input
                                     type="text"
                                     required
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.phone}
                                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                     placeholder="Ej: 0995541483"
@@ -267,7 +267,7 @@ export default function Pacientes() {
                                 <input
                                     type="email"
                                     required
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     placeholder="Ej: email@ejemplo.com"
@@ -278,7 +278,7 @@ export default function Pacientes() {
                                 <label className="block text-sm font-medium mb-1">Historial Médico</label>
                                 <textarea
                                     rows={3}
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.history}
                                     onChange={(e) => setFormData({ ...formData, history: e.target.value })}
                                     placeholder="Antecedentes médicos, alergias, observaciones..."
@@ -338,7 +338,7 @@ export default function Pacientes() {
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">
                             {currentItems.map((patient) => (
-                                <tr key={patient.id} className="hover:bg-slate-50/80 transition-colors group">
+                                <tr key={patient.id} className="hover:bg-blue-50/30 hover:shadow-[inset_4px_0_0_0_#3b82f6] transition-all duration-200 group cursor-pointer">
                                     <td className="px-6 py-5 whitespace-nowrap">
                                         <div className="flex items-center">
                                             <div className={`h-11 w-11 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ${getAvatarColor(patient.name)}`}>

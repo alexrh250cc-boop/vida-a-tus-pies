@@ -742,7 +742,7 @@ export default function Agenda() {
                                     {daysToShow.map(day => {
                                         const appointment = getAppointmentForSlot(day, hour);
                                         return (
-                                            <div key={day.toString()} className={`p-1 border-r h-24 relative transition-colors ${!appointment ? 'hover:bg-gray-100 cursor-pointer' : ''}`}>
+                                            <div key={day.toString()} className={`p-1 border-r h-24 relative transition-all duration-200 ${!appointment ? 'hover:bg-blue-50/50 hover:shadow-inner cursor-pointer' : ''}`}>
                                                 {appointment ? (
                                                     <div
                                                         onClick={(e) => {
@@ -750,7 +750,7 @@ export default function Agenda() {
                                                             setSelectedAppointment(appointment);
                                                             setIsDetailsModalOpen(true);
                                                         }}
-                                                        className={`absolute inset-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all hover:scale-[1.02] hover:shadow-md z-10 ${getServiceColor(appointment.serviceName)}`}
+                                                        className={`absolute inset-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md z-10 ${getServiceColor(appointment.serviceName)}`}
                                                     >
                                                         <div className="flex justify-between items-start">
                                                             <p className="font-bold truncate">{appointment.patientName}</p>
@@ -765,7 +765,7 @@ export default function Agenda() {
                                                     </div>
                                                 ) : (
                                                     <div
-                                                        className="w-full h-full flex justify-center items-center opacity-0 group-hover:opacity-100 hover:opacity-100"
+                                                        className="w-full h-full flex justify-center items-center opacity-0 hover:opacity-100 transition-opacity duration-300"
                                                         onClick={() => {
                                                             setSelectedAppointment(null);
                                                             setFormData({
@@ -776,7 +776,7 @@ export default function Agenda() {
                                                             setIsModalOpen(true);
                                                         }}
                                                     >
-                                                        <Plus className="w-6 h-6 text-slate-400 bg-slate-200 rounded-full p-1" />
+                                                        <Plus className="w-8 h-8 text-company-blue bg-blue-100 rounded-full p-1.5 shadow-sm transform scale-90 hover:scale-110 transition-transform duration-200" />
                                                     </div>
                                                 )}
                                             </div>

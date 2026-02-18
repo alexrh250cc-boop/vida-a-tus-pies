@@ -56,7 +56,7 @@ export default function Layout() {
                                     key={item.name}
                                     to={item.href}
                                     className={clsx(
-                                        "flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors",
+                                        "flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 hover:translate-x-1",
                                         isActive
                                             ? "bg-company-green/10 text-company-green"
                                             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"

@@ -71,7 +71,7 @@ export default function Login() {
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-company-green focus:border-transparent"
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-4 focus:ring-company-green/20 focus:border-company-green outline-none transition-all duration-200"
                                 placeholder="correo@ejemplo.com"
                                 required
                             />
@@ -88,7 +88,7 @@ export default function Login() {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-company-green focus:border-transparent"
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-4 focus:ring-company-green/20 focus:border-company-green outline-none transition-all duration-200"
                                 placeholder="********"
                                 required
                             />
@@ -98,7 +98,7 @@ export default function Login() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-company-green text-white py-2 px-4 rounded-lg hover:bg-company-green/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        className="w-full bg-company-green text-white py-2 px-4 rounded-lg hover:bg-company-green/90 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                     >
                         {loading ? 'Iniciando sesión...' : 'Ingresar al Sistema'}
                     </button>

@@ -234,7 +234,7 @@ export default function Dashboard() {
                     <div
                         key={item.name}
                         onClick={() => navigate(item.link)}
-                        className={`relative overflow-hidden rounded-xl bg-white p-6 shadow-sm border ${item.border} hover:shadow-md hover:${item.shadow} transition-all duration-300 cursor-pointer group`}
+                        className={`relative overflow-hidden rounded-xl bg-white p-6 shadow-sm border ${item.border} hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer group`}
                     >
                         <dt>
                             <div className={`absolute rounded-2xl p-3 ${item.bg} group-hover:scale-110 transition-transform duration-300`}>
