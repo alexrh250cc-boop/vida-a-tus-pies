@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Appointment, Patient, Service, User, FichaPodologica, ClinicalNote, PatientFile, ClinicalNoteFormData } from '../types';
+import { Appointment, Patient, Service, User, FichaPodologica, ClinicalNote, PatientFile, ClinicalNoteFormData, ReportKPIs, AppointmentsByDay, ServiceRanking, ProfessionalStats, IncomeSummary } from '../types';
 
 export const api = {
     // Users (Profiles)
@@ -304,7 +304,7 @@ export const api = {
         // Validar que la hora esté entre 8 y 20
         const appointmentDate = new Date(appointment.date);
         const hour = appointmentDate.getHours();
-        
+
         if (hour < 8 || hour > 20) {
             throw new Error('Las citas solo pueden agendarse entre las 8:00 y las 20:00');
         }
@@ -440,5 +440,145 @@ export const api = {
 
         if (error) throw error;
         return true;
+    },
+
+    // Reports
+    getReportKPIs: async (startDate: string, endDate: string): Promise<ReportKPIs> => {
+        // Total Patients (Total historical, not necessarily in range, but user asked for KPIs)
+        // Usually, total patients is historical, but range might apply to new ones.
+        // Let's get total patients historical for now as it's a general KPI.
+        const { count: totalPatients, error: pError } = await supabase
+            .from('patients')
+            .select('*', { count: 'exact', head: true });
+
+        if (pError) throw pError;
+
+        // Total Appointments in range
+        const { data: appointments, error: aError } = await supabase
+            .from('appointments')
+            .select('status, service:services(price)')
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (aError) throw aError;
+
+        const totalAppointments = appointments?.length || 0;
+        const completedAppointments = appointments?.filter(a => a.status === 'completed').length || 0;
+
+        const estimatedIncome = appointments?.reduce((sum, a) => {
+            if (a.status === 'completed' && a.service) {
+                return sum + (a.service as any).price;
+            }
+            return sum;
+        }, 0) || 0;
+
+        return {
+            totalPatients: totalPatients || 0,
+            totalAppointments,
+            completedAppointments,
+            estimatedIncome
+        };
+    },
+
+    getAppointmentsByDay: async (startDate: string, endDate: string): Promise<AppointmentsByDay[]> => {
+        const { data, error } = await supabase
+            .from('appointments')
+            .select('date, status')
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .order('date', { ascending: true });
+
+        if (error) throw error;
+
+        const daysMap: Record<string, AppointmentsByDay> = {};
+
+        data?.forEach(apt => {
+            const day = apt.date.split('T')[0];
+            if (!daysMap[day]) {
+                daysMap[day] = { date: day, scheduled: 0, completed: 0, cancelled: 0 };
+            }
+            if (apt.status === 'scheduled') daysMap[day].scheduled++;
+            else if (apt.status === 'completed') daysMap[day].completed++;
+            else if (apt.status === 'cancelled') daysMap[day].cancelled++;
+        });
+
+        return Object.values(daysMap);
+    },
+
+    getServicesRanking: async (startDate: string, endDate: string): Promise<ServiceRanking[]> => {
+        const { data, error } = await supabase
+            .from('appointments')
+            .select('status, service:services(name, price)')
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (error) throw error;
+
+        const servicesMap: Record<string, ServiceRanking> = {};
+
+        data?.forEach(apt => {
+            if (apt.service) {
+                const s = apt.service as any;
+                if (!servicesMap[s.name]) {
+                    servicesMap[s.name] = { name: s.name, count: 0, income: 0 };
+                }
+                servicesMap[s.name].count++;
+                if (apt.status === 'completed') {
+                    servicesMap[s.name].income += s.price;
+                }
+            }
+        });
+
+        return Object.values(servicesMap).sort((a, b) => b.count - a.count);
+    },
+
+    getAppointmentsByProfessional: async (startDate: string, endDate: string): Promise<ProfessionalStats[]> => {
+        const { data, error } = await supabase
+            .from('appointments')
+            .select('professional:profiles(name)')
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (error) throw error;
+
+        const profMap: Record<string, ProfessionalStats> = {};
+
+        data?.forEach(apt => {
+            if (apt.professional) {
+                const p = apt.professional as any;
+                if (!profMap[p.name]) {
+                    profMap[p.name] = { name: p.name, count: 0 };
+                }
+                profMap[p.name].count++;
+            }
+        });
+
+        return Object.values(profMap).sort((a, b) => b.count - a.count);
+    },
+
+    getIncomeSummary: async (startDate: string, endDate: string): Promise<IncomeSummary[]> => {
+        const { data, error } = await supabase
+            .from('appointments')
+            .select('status, service:services(name, price)')
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .eq('status', 'completed');
+
+        if (error) throw error;
+
+        const summaryMap: Record<string, IncomeSummary> = {};
+
+        data?.forEach(apt => {
+            if (apt.service) {
+                const s = apt.service as any;
+                if (!summaryMap[s.name]) {
+                    summaryMap[s.name] = { serviceName: s.name, count: 0, unitPrice: s.price, total: 0 };
+                }
+                summaryMap[s.name].count++;
+                summaryMap[s.name].total += s.price;
+            }
+        });
+
+        return Object.values(summaryMap).sort((a, b) => b.total - a.total);
     }
 };

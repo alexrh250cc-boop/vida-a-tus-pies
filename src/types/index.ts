@@ -104,3 +104,39 @@ export interface FichaPodologica {
 }
 
 export type FichaPodologicaFormData = Omit<FichaPodologica, 'id' | 'created_at' | 'updated_at'>;
+
+// ============================================
+// Report Interfaces
+// ============================================
+
+export interface ReportKPIs {
+    totalPatients: number;
+    totalAppointments: number;
+    completedAppointments: number;
+    estimatedIncome: number;
+}
+
+export interface AppointmentsByDay {
+    date: string;
+    scheduled: number;
+    completed: number;
+    cancelled: number;
+}
+
+export interface ServiceRanking {
+    name: string;
+    count: number;
+    income: number;
+}
+
+export interface ProfessionalStats {
+    name: string;
+    count: number;
+}
+
+export interface IncomeSummary {
+    serviceName: string;
+    count: number;
+    unitPrice: number;
+    total: number;
+}
