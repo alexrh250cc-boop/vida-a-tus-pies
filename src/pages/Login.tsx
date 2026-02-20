@@ -104,12 +104,7 @@ export default function Login() {
                     </button>
                 </form>
 
-                <div className="mt-8 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <p className="text-sm font-medium text-slate-700 mb-2">Credenciales de Demo:</p>
-                    <p className="text-xs text-slate-600">Admin: admin@vidaatuspies.com</p>
-                    <p className="text-xs text-slate-600">Doctor: juan@vidaatuspies.com</p>
-                    <p className="text-xs text-slate-600">Contraseña: (Cualquiera)</p>
-                </div>
+
             </div>
         </div>
     );
