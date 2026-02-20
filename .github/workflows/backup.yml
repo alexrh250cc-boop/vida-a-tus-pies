@@ -1,26 +1,30 @@
-name: Daily Backup 
- 
-on: 
-  schedule: 
-    - cron: '0 2 * * *' 
-  workflow_dispatch: 
- 
-jobs: 
-  backup: 
-    runs-on: ubuntu-latest 
-    steps: 
-      - name: Checkout repository 
-        uses: actions/checkout@v3 
-        with: 
-          fetch-depth: 0 
- 
-      - name: Create backup archive 
-          TIMESTAMP=$(date +"%%Y%%m%%d_%%H%%M%%S") 
-          git bundle create backup-$TIMESTAMP.bundle --all 
- 
-      - name: Upload backup to artifacts 
-        uses: actions/upload-artifact@v3 
-        with: 
-          name: code-backup 
-          path: backup-*.bundle 
-          retention-days: 30 
+name: Daily Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Create backup archive
+        run: |
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          git bundle create backup-${TIMESTAMP}.bundle --all
+
+      - name: Upload backup to artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: code-backup
+          path: backup-*.bundle
+          retention-days: 30
