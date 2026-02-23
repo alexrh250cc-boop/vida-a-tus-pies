@@ -309,6 +309,27 @@ export const api = {
             throw new Error('Las citas solo pueden agendarse entre las 8:00 y las 20:00');
         }
 
+        // Obtener duración del servicio
+        const { data: service, error: serviceError } = await supabase
+            .from('services')
+            .select('duration')
+            .eq('id', appointment.serviceId)
+            .single();
+
+        if (serviceError) throw serviceError;
+        const duration = service?.duration || 60; // Default 60 if not found
+
+        // Validar traslape
+        const hasOverlap = await api.checkOverlap(
+            appointment.sede,
+            appointment.date,
+            duration
+        );
+
+        if (hasOverlap) {
+            throw new Error('El horario seleccionado no está disponible (se superpone con otra cita)');
+        }
+
         const { data, error } = await supabase
             .from('appointments')
             .insert([{
@@ -328,6 +349,44 @@ export const api = {
     },
 
     updateAppointment: async (id: string, appointment: Partial<Appointment>) => {
+        // Si hay cambio de fecha o servicio, validar traslape
+        if (appointment.date || appointment.serviceId || appointment.sede) {
+            // Obtener cita actual para completar datos faltantes
+            const { data: currentApt, error: aptError } = await supabase
+                .from('appointments')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (aptError) throw aptError;
+
+            const newDate = appointment.date || currentApt.date;
+            const newServiceId = appointment.serviceId || currentApt.service_id;
+            const newSede = appointment.sede || currentApt.sede;
+
+            // Obtener duración del servicio
+            const { data: service, error: serviceError } = await supabase
+                .from('services')
+                .select('duration')
+                .eq('id', newServiceId)
+                .single();
+
+            if (serviceError) throw serviceError;
+            const duration = service?.duration || 60;
+
+            // Validar traslape excluyendo la cita actual
+            const hasOverlap = await api.checkOverlap(
+                newSede,
+                newDate,
+                duration,
+                id
+            );
+
+            if (hasOverlap) {
+                throw new Error('El nuevo horario no está disponible (se superpone con otra cita)');
+            }
+        }
+
         const updateData: any = {};
         if (appointment.patientId) updateData.patient_id = appointment.patientId;
         if (appointment.serviceId) updateData.service_id = appointment.serviceId;
@@ -346,6 +405,34 @@ export const api = {
 
         if (error) throw error;
         return data;
+    },
+
+    checkOverlap: async (sede: string, date: string, duration: number, excludeId?: string): Promise<boolean> => {
+        const start = new Date(date);
+        const end = new Date(start.getTime() + duration * 60000);
+
+        const { data: appointments, error } = await supabase
+            .from('appointments')
+            .select('id, date, service:services(duration)')
+            .eq('sede', sede)
+            .neq('status', 'cancelled'); // No contar canceladas
+
+        if (error) throw error;
+        if (!appointments) return false;
+
+        const hasOverlap = appointments.some((apt: any) => {
+            if (excludeId && apt.id === excludeId) return false;
+
+            const aptStart = new Date(apt.date);
+            const aptDuration = apt.service?.duration || 60;
+            const aptEnd = new Date(aptStart.getTime() + aptDuration * 60000);
+
+            // Verificar si hay intersección de intervalos
+            // (StartA < EndB) AND (EndA > StartB)
+            return (start < aptEnd) && (end > aptStart);
+        });
+
+        return hasOverlap;
     },
 
     deleteAppointment: async (id: string) => {

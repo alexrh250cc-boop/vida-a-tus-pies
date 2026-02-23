@@ -207,7 +207,7 @@ export default function Agenda() {
             serviceId: appointment.serviceId,
             sede: appointment.sede,
             date: format(parseISO(appointment.date), 'yyyy-MM-dd'),
-            time: format(parseISO(appointment.date), 'HH:00')
+            time: format(parseISO(appointment.date), 'HH:mm')
         });
         setIsDetailsModalOpen(false);
         setIsModalOpen(true);
@@ -221,16 +221,25 @@ export default function Agenda() {
         (selectedSede === 'all' || apt.sede === selectedSede)
     );
 
-    const getAppointmentForSlot = (day: Date, hour: Date) => {
+    const getAppointmentsForSlot = (day: Date, hour: Date) => {
         const cellDateStr = format(day, 'yyyy-MM-dd');
-        const cellHourStr = format(hour, 'HH:00');
+        const cellStart = new Date(day);
+        cellStart.setHours(hour.getHours(), 0, 0, 0);
+        const cellEnd = new Date(cellStart.getTime() + 60 * 60000);
 
-        return filteredAppointments.find(apt => {
-            const aptDate = parseISO(apt.date);
-            const aptDateStr = format(aptDate, 'yyyy-MM-dd');
-            const aptHourStr = format(aptDate, 'HH:00');
+        return filteredAppointments.filter(apt => {
+            const aptStart = parseISO(apt.date);
+            const aptDateStr = format(aptStart, 'yyyy-MM-dd');
 
-            return aptDateStr === cellDateStr && aptHourStr === cellHourStr;
+            if (aptDateStr !== cellDateStr) return false;
+
+            // Encontrar el servicio para saber la duración
+            const service = services.find(s => s.id === apt.serviceId);
+            const duration = service?.duration || 60;
+            const aptEnd = new Date(aptStart.getTime() + duration * 60000);
+
+            // Cita intercepta esta celda de hora
+            return (aptStart < cellEnd) && (aptEnd > cellStart);
         });
     };
 
@@ -460,22 +469,41 @@ export default function Agenda() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Hora *</label>
-                                <select
-                                    required
-                                    className="w-full border rounded-lg p-2"
-                                    value={formData.time}
-                                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                                >
-                                    {Array.from({ length: 13 }).map((_, i) => {
-                                        const hour = (i + 8).toString().padStart(2, '0');
-                                        return (
-                                            <option key={hour} value={`${hour}:00`}>
-                                                {hour}:00
-                                            </option>
-                                        );
-                                    })}
-                                </select>
+                                <label className="block text-sm font-medium mb-1">Hora * (8:00 - 20:00)</label>
+                                <div className="relative">
+                                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-company-blue outline-none"
+                                        placeholder="Ej: 08:30, 14:15"
+                                        value={formData.time}
+                                        onChange={(e) => {
+                                            let value = e.target.value.replace(/[^0-9:]/g, '');
+                                            if (value.length === 2 && !value.includes(':') && formData.time.length < 2) {
+                                                value += ':';
+                                            }
+                                            setFormData({ ...formData, time: value });
+                                        }}
+                                        onBlur={(e) => {
+                                            const val = e.target.value;
+                                            const parts = val.split(':');
+                                            if (parts.length === 2) {
+                                                const h = parseInt(parts[0]);
+                                                const m = parseInt(parts[1]);
+                                                if (!isNaN(h) && !isNaN(m)) {
+                                                    const formatted = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                                                    setFormData({ ...formData, time: formatted });
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                {formData.serviceId && (
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Duración: {services.find(s => s.id === formData.serviceId)?.duration} minutos
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex justify-end gap-2 pt-4">
@@ -740,30 +768,57 @@ export default function Agenda() {
                                         {format(hour, 'HH:mm')}
                                     </div>
                                     {daysToShow.map(day => {
-                                        const appointment = getAppointmentForSlot(day, hour);
+                                        const appointmentsInSlot = getAppointmentsForSlot(day, hour);
                                         return (
-                                            <div key={day.toString()} className={`p-1 border-r h-24 relative transition-all duration-200 ${!appointment ? 'hover:bg-blue-50/50 hover:shadow-inner cursor-pointer' : ''}`}>
-                                                {appointment ? (
-                                                    <div
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedAppointment(appointment);
-                                                            setIsDetailsModalOpen(true);
-                                                        }}
-                                                        className={`absolute inset-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md z-10 ${getServiceColor(appointment.serviceName)}`}
-                                                    >
-                                                        <div className="flex justify-between items-start">
-                                                            <p className="font-bold truncate">{appointment.patientName}</p>
-                                                            <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                            <div key={day.toString()} className={`p-0 border-r h-24 relative transition-all duration-200 ${appointmentsInSlot.length === 0 ? 'hover:bg-blue-50/50 hover:shadow-inner cursor-pointer' : ''}`}>
+                                                {appointmentsInSlot.map(appointment => {
+                                                    const aptStart = parseISO(appointment.date);
+                                                    const service = services.find(s => s.id === appointment.serviceId);
+                                                    const duration = service?.duration || 60;
+
+                                                    // Calcular posición y altura relativa al slot de 1 hora (60 min)
+                                                    // Cada slot h-24 = 96px -> 1.6px por minuto
+                                                    const startMin = aptStart.getHours() * 60 + aptStart.getMinutes();
+                                                    const slotStartMin = hour.getHours() * 60;
+
+                                                    const topOffset = Math.max(0, (startMin - slotStartMin) * 1.6);
+                                                    const height = (duration * 1.6);
+
+                                                    // Solo mostrar si el inicio de la cita cae en este slot de hora
+                                                    if (aptStart.getHours() !== hour.getHours()) return null;
+
+                                                    return (
+                                                        <div
+                                                            key={appointment.id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedAppointment(appointment);
+                                                                setIsDetailsModalOpen(true);
+                                                            }}
+                                                            style={{
+                                                                top: `${topOffset}px`,
+                                                                height: `${height}px`,
+                                                                zIndex: 20
+                                                            }}
+                                                            className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
+                                                        >
+                                                            <div className="flex justify-between items-start">
+                                                                <p className="font-bold truncate">{appointment.patientName}</p>
+                                                                <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                            </div>
+                                                            <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
+                                                            <div className="mt-0.5 flex items-center justify-between">
+                                                                <span className="text-[9px] font-medium">
+                                                                    {format(aptStart, 'HH:mm')} ({duration}')
+                                                                </span>
+                                                                <span className="bg-white/50 px-1 rounded text-[9px]">
+                                                                    {getStatusText(appointment.status)}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
-                                                        <div className="mt-1 flex items-center gap-1">
-                                                            <span className="bg-white/50 px-1 rounded text-[10px]">
-                                                                {getStatusText(appointment.status)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                ) : (
+                                                    );
+                                                })}
+                                                {appointmentsInSlot.length === 0 && (
                                                     <div
                                                         className="w-full h-full flex justify-center items-center opacity-0 hover:opacity-100 transition-opacity duration-300"
                                                         onClick={() => {
@@ -771,7 +826,7 @@ export default function Agenda() {
                                                             setFormData({
                                                                 ...formData,
                                                                 date: format(day, 'yyyy-MM-dd'),
-                                                                time: format(hour, 'HH:00')
+                                                                time: format(hour, 'HH:mm')
                                                             });
                                                             setIsModalOpen(true);
                                                         }}
