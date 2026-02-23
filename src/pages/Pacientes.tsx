@@ -379,7 +379,7 @@ export default function Pacientes() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-200">
+                                        <div className="flex items-center justify-end gap-1">
                                             <button
                                                 onClick={() => navigate(`/pacientes/${patient.id}`)}
                                                 className="text-company-blue bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
