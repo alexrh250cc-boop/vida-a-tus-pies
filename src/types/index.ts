@@ -26,6 +26,7 @@ export interface Patient {
     history: string;
     address?: string;        // ← NUEVO: Dirección del paciente
     birth_date?: string;     // ← NUEVO: Fecha de nacimiento (YYYY-MM-DD)
+    created_by?: string;     // ← NUEVO: ID del profesional que creó al paciente
     createdAt: string;
 }
 
@@ -81,6 +82,7 @@ export type PatientFileFormData = Omit<PatientFile, 'id' | 'created_at'>;
 export interface FichaPodologica {
     id: string;
     patient_id: string;
+    professional_id?: string | null;
     appointment_id?: string | null;
     fecha: string;
     motivo_consulta: string | null;
@@ -89,7 +91,9 @@ export interface FichaPodologica {
         hipertension: boolean;
         hipotiroidismo: boolean;
         hipertiroidismo: boolean;
+        otras: boolean;
     };
+    otras_enfermedades: string | null;
     tiempo_enfermedad: string | null;
     medicacion: string | null;
     alergias: string | null;

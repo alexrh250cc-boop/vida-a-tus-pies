@@ -12,6 +12,17 @@ export const api = {
         return data || [];
     },
 
+    getProfile: async (id: string): Promise<User | null> => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
     // Services
     getServices: async (): Promise<Service[]> => {
         const { data, error } = await supabase
@@ -89,6 +100,8 @@ export const api = {
     },
 
     createPatient: async (patient: Omit<Patient, 'id' | 'createdAt'>) => {
+        const { data: { user } } = await supabase.auth.getUser();
+
         const { data, error } = await supabase
             .from('patients')
             .insert([{
@@ -98,7 +111,8 @@ export const api = {
                 email: patient.email,
                 history: patient.history,
                 address: patient.address,
-                birth_date: patient.birth_date
+                birth_date: patient.birth_date,
+                created_by: user?.id
             }])
             .select()
             .single();
@@ -128,12 +142,79 @@ export const api = {
     },
 
     deletePatient: async (id: string) => {
-        const { error } = await supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
+
+        // Obtener el perfil del usuario para ver su rol
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        // Obtener el paciente para verificar propiedad
+        const { data: patient, error: fetchError } = await supabase
+            .from('patients')
+            .select('created_by')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !patient) throw new Error('Paciente no encontrado');
+
+        // Validar: si es podologo, debe ser el creador. Si es admin, permite todo.
+        const role = profile?.role;
+        if (role === 'podologo') {
+            if (patient.created_by !== user.id) {
+                throw new Error('No tienes permiso para eliminar este paciente (solo puedes eliminar pacientes creados por ti).');
+            }
+        } else if (role !== 'admin') {
+            throw new Error('No tienes permisos suficientes para realizar esta acción.');
+        }
+
+        // 1. Eliminar notas clínicas
+        const { error: notesError } = await supabase
+            .from('clinical_notes')
+            .delete()
+            .eq('patient_id', id);
+        if (notesError) throw notesError;
+
+        // 2. Eliminar fichas podológicas
+        const { error: fichasError } = await supabase
+            .from('fichas_podologicas')
+            .delete()
+            .eq('patient_id', id);
+        if (fichasError) throw fichasError;
+
+        // 3. Eliminar citas
+        const { error: appointmentsError } = await supabase
+            .from('appointments')
+            .delete()
+            .eq('patient_id', id);
+        if (appointmentsError) throw appointmentsError;
+
+        // 4. Eliminar archivos (del storage y de la tabla)
+        const { data: files } = await supabase
+            .from('patient_files')
+            .select('file_path')
+            .eq('patient_id', id);
+
+        if (files && files.length > 0) {
+            const filePaths = files.map(f => f.file_path);
+            await supabase.storage.from('patient-files').remove(filePaths);
+
+            await supabase
+                .from('patient_files')
+                .delete()
+                .eq('patient_id', id);
+        }
+
+        // 5. Finalmente eliminar el paciente
+        const { error: patientError } = await supabase
             .from('patients')
             .delete()
             .eq('id', id);
 
-        if (error) throw error;
+        if (patientError) throw patientError;
         return true;
     },
 
@@ -190,11 +271,34 @@ export const api = {
     },
 
     deleteClinicalNote: async (id: string) => {
-        const { error } = await supabase
-            .from('clinical_notes')
-            .delete()
-            .eq('id', id);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
 
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        // Obtener la nota para verificar propiedad
+        const { data: note, error: fetchError } = await supabase
+            .from('clinical_notes')
+            .select('professional_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !note) throw new Error('Nota no encontrada');
+
+        const role = profile?.role;
+        if (role === 'podologo') {
+            if (note.professional_id !== user.id) {
+                throw new Error('No tienes permiso para eliminar esta nota (solo puedes eliminar tus propias notas).');
+            }
+        } else if (role !== 'admin') {
+            throw new Error('No tienes permisos suficientes para realizar esta acción.');
+        }
+
+        const { error } = await supabase.from('clinical_notes').delete().eq('id', id);
         if (error) throw error;
         return true;
     },
@@ -436,11 +540,36 @@ export const api = {
     },
 
     deleteAppointment: async (id: string) => {
-        const { error } = await supabase
-            .from('appointments')
-            .delete()
-            .eq('id', id);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
 
+        // Obtener el perfil del usuario para ver su rol
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        // Obtener la cita para verificar propiedad
+        const { data: appointment, error: fetchError } = await supabase
+            .from('appointments')
+            .select('professional_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !appointment) throw new Error('Cita no encontrada');
+
+        // Si es podologo, solo puede borrar si la cita es suya
+        if (profile?.role === 'podologo') {
+            if (appointment.professional_id !== user.id) {
+                throw new Error('No tienes permiso para eliminar esta cita (solo puedes eliminar tus propias citas).');
+            }
+        } else if (profile?.role !== 'admin') {
+            // Si tiene otro rol que no es admin, tampoco debería poder borrar (seguridad extra)
+            throw new Error('No tienes permisos de administrador para realizar esta acción.');
+        }
+
+        const { error } = await supabase.from('appointments').delete().eq('id', id);
         if (error) throw error;
         return true;
     },
@@ -473,6 +602,7 @@ export const api = {
             .from('fichas_podologicas')
             .insert([{
                 patient_id: ficha.patient_id,
+                professional_id: ficha.professional_id,
                 appointment_id: ficha.appointment_id,
                 fecha: ficha.fecha,
                 motivo_consulta: ficha.motivo_consulta,
@@ -481,6 +611,7 @@ export const api = {
                 medicacion: ficha.medicacion,
                 alergias: ficha.alergias,
                 cirugias_miembro_inferior: ficha.cirugias_miembro_inferior,
+                otras_enfermedades: ficha.otras_enfermedades,
                 diagnostico_pie_derecho: ficha.diagnostico_pie_derecho,
                 diagnostico_pie_izquierdo: ficha.diagnostico_pie_izquierdo,
                 observaciones: ficha.observaciones,
@@ -505,6 +636,7 @@ export const api = {
                 medicacion: ficha.medicacion,
                 alergias: ficha.alergias,
                 cirugias_miembro_inferior: ficha.cirugias_miembro_inferior,
+                otras_enfermedades: ficha.otras_enfermedades,
                 diagnostico_pie_derecho: ficha.diagnostico_pie_derecho,
                 diagnostico_pie_izquierdo: ficha.diagnostico_pie_izquierdo,
                 observaciones: ficha.observaciones,
@@ -520,11 +652,34 @@ export const api = {
     },
 
     deleteFicha: async (id: string) => {
-        const { error } = await supabase
-            .from('fichas_podologicas')
-            .delete()
-            .eq('id', id);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
 
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        // Obtener la ficha para verificar propiedad
+        const { data: ficha, error: fetchError } = await supabase
+            .from('fichas_podologicas')
+            .select('professional_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !ficha) throw new Error('Ficha no encontrada');
+
+        const role = profile?.role;
+        if (role === 'podologo') {
+            if (ficha.professional_id !== user.id) {
+                throw new Error('No tienes permiso para eliminar esta ficha (solo puedes eliminar tus propias fichas).');
+            }
+        } else if (role !== 'admin') {
+            throw new Error('No tienes permisos suficientes para realizar esta acción.');
+        }
+
+        const { error } = await supabase.from('fichas_podologicas').delete().eq('id', id);
         if (error) throw error;
         return true;
     },

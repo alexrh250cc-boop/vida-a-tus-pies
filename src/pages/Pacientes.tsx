@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import {
     Search, Plus, FileText, Phone, AlertCircle, X,
     Edit, Trash2, ChevronLeft, ChevronRight,
@@ -10,6 +11,7 @@ import { Patient } from '../types';
 
 export default function Pacientes() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [patients, setPatients] = useState<Patient[]>([]);
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
@@ -108,6 +110,14 @@ export default function Pacientes() {
     };
 
     const handleDelete = async (id: string) => {
+        const patient = patients.find(p => p.id === id);
+
+        // Validación de permisos
+        if (user?.role === 'podologo' && patient?.created_by !== user?.id) {
+            alert('No tienes permiso para eliminar este paciente.');
+            return;
+        }
+
         if (!confirm('¿Estás seguro de eliminar este paciente? Esta acción eliminará también todas sus citas y fichas médicas.')) {
             return;
         }
@@ -239,10 +249,9 @@ export default function Pacientes() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Cédula *</label>
+                                <label className="block text-sm font-medium mb-1">Cédula</label>
                                 <input
                                     type="text"
-                                    required
                                     className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.cedula}
                                     onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
@@ -251,10 +260,9 @@ export default function Pacientes() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Teléfono *</label>
+                                <label className="block text-sm font-medium mb-1">Teléfono</label>
                                 <input
                                     type="text"
-                                    required
                                     className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.phone}
                                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -263,10 +271,9 @@ export default function Pacientes() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Email *</label>
+                                <label className="block text-sm font-medium mb-1">Email</label>
                                 <input
                                     type="email"
-                                    required
                                     className="w-full border rounded-lg p-2 focus:ring-4 focus:ring-company-blue/10 focus:border-company-blue outline-none transition-all duration-200"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -394,13 +401,15 @@ export default function Pacientes() {
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </button>
-                                            <button
-                                                onClick={() => handleDelete(patient.id)}
-                                                className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors"
-                                                title="Eliminar paciente"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            {(user?.role === 'admin' || user?.id === patient.created_by) && (
+                                                <button
+                                                    onClick={() => handleDelete(patient.id)}
+                                                    className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors"
+                                                    title="Eliminar paciente"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

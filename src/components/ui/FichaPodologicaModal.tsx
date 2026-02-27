@@ -1,38 +1,43 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { FichaPodologica } from '../../types';
-import { 
-    Save, X, Printer, FileText, 
-    Heart, Clock, Pill, AlertTriangle, 
+import {
+    Save, X, Printer, FileText,
+    Heart, Clock, Pill, AlertTriangle,
     Scissors, User, Phone, Mail, MapPin, Activity
 } from 'lucide-react';
 
 interface FichaPodologicaModalProps {
     patientId: string;
+    professionalId?: string;
     patientData: any;
     ficha?: FichaPodologica | null;
     onClose: () => void;
     onSave: () => void;
 }
 
-export default function FichaPodologicaModal({ 
-    patientId, 
-    patientData, 
-    ficha, 
-    onClose, 
-    onSave 
+export default function FichaPodologicaModal({
+    patientId,
+    professionalId,
+    patientData,
+    ficha,
+    onClose,
+    onSave
 }: FichaPodologicaModalProps) {
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState<Omit<FichaPodologica, 'id' | 'created_at' | 'updated_at'>>({
         patient_id: patientId,
+        professional_id: professionalId,
         fecha: new Date().toISOString().split('T')[0],
         motivo_consulta: '',
         enfermedades: {
             diabetes: false,
             hipertension: false,
             hipotiroidismo: false,
-            hipertiroidismo: false
+            hipertiroidismo: false,
+            otras: false
         },
+        otras_enfermedades: '',
         tiempo_enfermedad: '',
         medicacion: '',
         alergias: '',
@@ -52,8 +57,10 @@ export default function FichaPodologicaModal({
                     diabetes: false,
                     hipertension: false,
                     hipotiroidismo: false,
-                    hipertiroidismo: false
+                    hipertiroidismo: false,
+                    otras: false
                 },
+                otras_enfermedades: ficha.otras_enfermedades || '',
                 tiempo_enfermedad: ficha.tiempo_enfermedad || '',
                 medicacion: ficha.medicacion || '',
                 alergias: ficha.alergias || '',
@@ -94,7 +101,8 @@ export default function FichaPodologicaModal({
             formData.enfermedades.diabetes ? 'Diabetes' : null,
             formData.enfermedades.hipertension ? 'Hipertensión' : null,
             formData.enfermedades.hipotiroidismo ? 'Hipotiroidismo' : null,
-            formData.enfermedades.hipertiroidismo ? 'Hipertiroidismo' : null
+            formData.enfermedades.hipertiroidismo ? 'Hipertiroidismo' : null,
+            formData.enfermedades.otras ? (formData.otras_enfermedades || 'Otras') : null
         ].filter(Boolean).join(', ') || 'Ninguna';
 
         printWindow.document.write(`
@@ -284,7 +292,7 @@ export default function FichaPodologicaModal({
                         type="text"
                         className="w-full p-2 border rounded-lg"
                         value={formData.motivo_consulta || ''}
-                        onChange={(e) => setFormData({...formData, motivo_consulta: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, motivo_consulta: e.target.value })}
                         placeholder="Describa el motivo de la consulta..."
                     />
                 </div>
@@ -300,8 +308,8 @@ export default function FichaPodologicaModal({
                                 type="checkbox"
                                 checked={formData.enfermedades.diabetes}
                                 onChange={(e) => setFormData({
-                                    ...formData, 
-                                    enfermedades: {...formData.enfermedades, diabetes: e.target.checked}
+                                    ...formData,
+                                    enfermedades: { ...formData.enfermedades, diabetes: e.target.checked }
                                 })}
                                 className="rounded"
                             />
@@ -312,8 +320,8 @@ export default function FichaPodologicaModal({
                                 type="checkbox"
                                 checked={formData.enfermedades.hipertension}
                                 onChange={(e) => setFormData({
-                                    ...formData, 
-                                    enfermedades: {...formData.enfermedades, hipertension: e.target.checked}
+                                    ...formData,
+                                    enfermedades: { ...formData.enfermedades, hipertension: e.target.checked }
                                 })}
                                 className="rounded"
                             />
@@ -324,8 +332,8 @@ export default function FichaPodologicaModal({
                                 type="checkbox"
                                 checked={formData.enfermedades.hipotiroidismo}
                                 onChange={(e) => setFormData({
-                                    ...formData, 
-                                    enfermedades: {...formData.enfermedades, hipotiroidismo: e.target.checked}
+                                    ...formData,
+                                    enfermedades: { ...formData.enfermedades, hipotiroidismo: e.target.checked }
                                 })}
                                 className="rounded"
                             />
@@ -336,14 +344,38 @@ export default function FichaPodologicaModal({
                                 type="checkbox"
                                 checked={formData.enfermedades.hipertiroidismo}
                                 onChange={(e) => setFormData({
-                                    ...formData, 
-                                    enfermedades: {...formData.enfermedades, hipertiroidismo: e.target.checked}
+                                    ...formData,
+                                    enfermedades: { ...formData.enfermedades, hipertiroidismo: e.target.checked }
                                 })}
                                 className="rounded"
                             />
                             <span>Hipertiroidismo</span>
                         </label>
+                        <label className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                checked={formData.enfermedades.otras}
+                                onChange={(e) => setFormData({
+                                    ...formData,
+                                    enfermedades: { ...formData.enfermedades, otras: e.target.checked }
+                                })}
+                                className="rounded"
+                            />
+                            <span>Otras</span>
+                        </label>
                     </div>
+
+                    {formData.enfermedades.otras && (
+                        <div className="mt-3">
+                            <input
+                                type="text"
+                                className="w-full p-2 border rounded-lg"
+                                value={formData.otras_enfermedades || ''}
+                                onChange={(e) => setFormData({ ...formData, otras_enfermedades: e.target.value })}
+                                placeholder="Especifique otras enfermedades..."
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -356,7 +388,7 @@ export default function FichaPodologicaModal({
                             type="text"
                             className="w-full p-2 border rounded-lg"
                             value={formData.tiempo_enfermedad || ''}
-                            onChange={(e) => setFormData({...formData, tiempo_enfermedad: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, tiempo_enfermedad: e.target.value })}
                             placeholder="Ej: 2 años, 6 meses..."
                         />
                     </div>
@@ -369,7 +401,7 @@ export default function FichaPodologicaModal({
                             type="text"
                             className="w-full p-2 border rounded-lg"
                             value={formData.medicacion || ''}
-                            onChange={(e) => setFormData({...formData, medicacion: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, medicacion: e.target.value })}
                             placeholder="Medicamentos que toma..."
                         />
                     </div>
@@ -385,7 +417,7 @@ export default function FichaPodologicaModal({
                             type="text"
                             className="w-full p-2 border rounded-lg"
                             value={formData.alergias || ''}
-                            onChange={(e) => setFormData({...formData, alergias: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, alergias: e.target.value })}
                             placeholder="Alergias conocidas..."
                         />
                     </div>
@@ -398,7 +430,7 @@ export default function FichaPodologicaModal({
                             type="text"
                             className="w-full p-2 border rounded-lg"
                             value={formData.cirugias_miembro_inferior || ''}
-                            onChange={(e) => setFormData({...formData, cirugias_miembro_inferior: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, cirugias_miembro_inferior: e.target.value })}
                             placeholder="Cirugías previas..."
                         />
                     </div>
@@ -414,7 +446,7 @@ export default function FichaPodologicaModal({
                             rows={3}
                             className="w-full p-2 border rounded-lg"
                             value={formData.diagnostico_pie_derecho || ''}
-                            onChange={(e) => setFormData({...formData, diagnostico_pie_derecho: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, diagnostico_pie_derecho: e.target.value })}
                             placeholder="Hallazgos, diagnósticos, tratamientos..."
                         />
                     </div>
@@ -427,7 +459,7 @@ export default function FichaPodologicaModal({
                             rows={3}
                             className="w-full p-2 border rounded-lg"
                             value={formData.diagnostico_pie_izquierdo || ''}
-                            onChange={(e) => setFormData({...formData, diagnostico_pie_izquierdo: e.target.value})}
+                            onChange={(e) => setFormData({ ...formData, diagnostico_pie_izquierdo: e.target.value })}
                             placeholder="Hallazgos, diagnósticos, tratamientos..."
                         />
                     </div>
@@ -441,7 +473,7 @@ export default function FichaPodologicaModal({
                         rows={2}
                         className="w-full p-2 border rounded-lg"
                         value={formData.observaciones || ''}
-                        onChange={(e) => setFormData({...formData, observaciones: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
                         placeholder="Notas adicionales, recomendaciones..."
                     />
                 </div>
@@ -449,8 +481,8 @@ export default function FichaPodologicaModal({
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                     <p className="text-sm font-medium mb-2">CONSENTIMIENTO INFORMADO</p>
                     <p className="text-xs text-slate-600">
-                        Yo, <strong>{patientData?.name || '_________________'}</strong>, acepto que el/la podólogo/a 
-                        proceda al tratamiento requerido. Me ha indicado el tipo de procedimiento y las consecuencias 
+                        Yo, <strong>{patientData?.name || '_________________'}</strong>, acepto que el/la podólogo/a
+                        proceda al tratamiento requerido. Me ha indicado el tipo de procedimiento y las consecuencias
                         que se pueden presentar, así como las indicaciones a seguir, para evitar complicaciones.
                     </p>
                 </div>

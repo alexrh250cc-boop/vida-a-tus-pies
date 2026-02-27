@@ -150,7 +150,15 @@ export default function Agenda() {
         }
     };
 
-    const handleDeleteAppointment = async (id: string) => {
+    const handleDeleteAppointment = async (id: string, appointment?: Appointment) => {
+        const aptToDelete = appointment || selectedAppointment;
+
+        // Validación de permisos
+        if (user?.role === 'podologo' && aptToDelete?.professionalId !== user?.id) {
+            alert('No tienes permiso para eliminar esta cita.');
+            return;
+        }
+
         if (!confirm('¿Estás seguro de eliminar esta cita? Esta acción no se puede deshacer.')) {
             return;
         }
@@ -632,13 +640,15 @@ export default function Agenda() {
                                     <Edit className="w-4 h-4" />
                                     Editar
                                 </button>
-                                <button
-                                    onClick={() => handleDeleteAppointment(selectedAppointment.id)}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Eliminar
-                                </button>
+                                {(user?.role === 'admin' || user?.id === selectedAppointment.professionalId) && (
+                                    <button
+                                        onClick={() => handleDeleteAppointment(selectedAppointment.id, selectedAppointment)}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Eliminar
+                                    </button>
+                                )}
                             </div>
 
                             {/* Ver ficha del paciente */}

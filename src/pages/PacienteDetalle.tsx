@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 import {
     ArrowLeft, Save, Plus, FileText, Trash2,
     Edit, Printer, Activity, Download, X,
-    Calendar, Cake, User, Phone
+    Calendar, Cake, User, Phone, AlertCircle
 } from 'lucide-react';
 import FichaPodologicaModal from '../components/ui/FichaPodologicaModal';
 
@@ -353,12 +353,24 @@ export default function PacienteDetalle() {
                 </div>
             </div>
 
+            {/* Alerta de datos incompletos */}
+            {(!patient.cedula || !patient.phone || !patient.email) && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-3 text-amber-800 shadow-sm animate-pulse">
+                    <AlertCircle className="w-5 h-5 text-amber-600" />
+                    <div>
+                        <p className="font-semibold text-sm">Paciente con datos incompletos</p>
+                        <p className="text-xs text-amber-700">Complete la información en la próxima consulta.</p>
+                    </div>
+                </div>
+            )}
+
             {/* Modal de Ficha Podológica */}
             {showFichaModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-auto">
                     <div className="relative w-full max-w-4xl m-4">
                         <FichaPodologicaModal
                             patientId={id!}
+                            professionalId={user?.id}
                             patientData={patient}
                             ficha={selectedFicha}
                             onClose={() => {
@@ -448,8 +460,8 @@ export default function PacienteDetalle() {
                     <button
                         onClick={() => setActiveTab('info')}
                         className={`py - 4 text - sm font - medium border - b - 2 transition - colors whitespace - nowrap ${activeTab === 'info'
-                                ? 'border-company-blue text-company-blue'
-                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                            ? 'border-company-blue text-company-blue'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
                             } `}
                     >
                         Información Personal
@@ -457,8 +469,8 @@ export default function PacienteDetalle() {
                     <button
                         onClick={() => setActiveTab('fichas')}
                         className={`py - 4 text - sm font - medium border - b - 2 transition - colors whitespace - nowrap flex items - center gap - 1 ${activeTab === 'fichas'
-                                ? 'border-company-blue text-company-blue'
-                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                            ? 'border-company-blue text-company-blue'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
                             } `}
                     >
                         <Activity className="w-4 h-4" />
@@ -472,8 +484,8 @@ export default function PacienteDetalle() {
                     <button
                         onClick={() => setActiveTab('historial')}
                         className={`py - 4 text - sm font - medium border - b - 2 transition - colors whitespace - nowrap ${activeTab === 'historial'
-                                ? 'border-company-blue text-company-blue'
-                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                            ? 'border-company-blue text-company-blue'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
                             } `}
                     >
                         Historial Clínico
@@ -486,8 +498,8 @@ export default function PacienteDetalle() {
                     <button
                         onClick={() => setActiveTab('archivos')}
                         className={`py - 4 text - sm font - medium border - b - 2 transition - colors whitespace - nowrap ${activeTab === 'archivos'
-                                ? 'border-company-blue text-company-blue'
-                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                            ? 'border-company-blue text-company-blue'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
                             } `}
                     >
                         Archivos y Fotos
@@ -512,8 +524,8 @@ export default function PacienteDetalle() {
                                 <button
                                     onClick={handleEditToggle}
                                     className={`px - 4 py - 2 rounded - lg flex items - center gap - 2 transition - all duration - 200 shadow - sm ${isEditing
-                                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                            : 'bg-company-blue text-white hover:bg-blue-600'
+                                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        : 'bg-company-blue text-white hover:bg-blue-600'
                                         } `}
                                 >
                                     <Edit className="w-4 h-4" />
@@ -711,13 +723,15 @@ export default function PacienteDetalle() {
                                                     >
                                                         <Edit className="w-4 h-4 text-slate-500" />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleDeleteFicha(ficha.id)}
-                                                        className="p-1 hover:bg-white rounded"
-                                                        title="Eliminar ficha"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-500" />
-                                                    </button>
+                                                    {(user?.role === 'admin' || user?.id === ficha.professional_id) && (
+                                                        <button
+                                                            onClick={() => handleDeleteFicha(ficha.id)}
+                                                            className="p-1 hover:bg-white rounded"
+                                                            title="Eliminar ficha"
+                                                        >
+                                                            <Trash2 className="w-4 h-4 text-red-500" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -772,20 +786,24 @@ export default function PacienteDetalle() {
                                                     </p>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => openNoteModal(note)}
-                                                        className="p-1 hover:bg-slate-100 rounded"
-                                                        title="Editar nota"
-                                                    >
-                                                        <Edit className="w-4 h-4 text-slate-500" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteNote(note.id)}
-                                                        className="p-1 hover:bg-slate-100 rounded"
-                                                        title="Eliminar nota"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-500" />
-                                                    </button>
+                                                    {(user?.role === 'admin' || user?.id === note.professional_id) && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => openNoteModal(note)}
+                                                                className="p-1 hover:bg-slate-100 rounded"
+                                                                title="Editar nota"
+                                                            >
+                                                                <Edit className="w-4 h-4 text-slate-500" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteNote(note.id)}
+                                                                className="p-1 hover:bg-slate-100 rounded"
+                                                                title="Eliminar nota"
+                                                            >
+                                                                <Trash2 className="w-4 h-4 text-red-500" />
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             <p className="text-sm text-slate-600 whitespace-pre-wrap">{note.content}</p>
