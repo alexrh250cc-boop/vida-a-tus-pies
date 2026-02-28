@@ -10,16 +10,15 @@ import {
     eachDayOfInterval,
     addDays,
     startOfDay,
-    addHours,
     parseISO,
     isSameMonth,
     isSameDay
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
-import { Appointment, Sede, Patient, Service } from '../types';
+import { Appointment, Sede, Patient, Service, PaymentMethod } from '../types';
 import {
-    ChevronLeft, ChevronRight, Plus, X, Calendar, Clock, MapPin,
+    ChevronLeft, ChevronRight, Plus, X, Calendar, Clock,
     Edit, Trash2, User, FileText, Search
 } from 'lucide-react';
 
@@ -50,6 +49,16 @@ export default function Agenda() {
     const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
     const searchRef = useRef<HTMLDivElement>(null);
+
+    // 🔥 NUEVOS ESTADOS PARA INTERVALOS Y PAGOS
+    const [slotInterval, setSlotInterval] = useState<15 | 30 | 60>(60);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [appointmentToPay, setAppointmentToPay] = useState<Appointment | null>(null);
+    const [paymentFormData, setPaymentFormData] = useState({
+        amount: 0,
+        payment_method: 'cash' as PaymentMethod,
+        notes: ''
+    });
 
     useEffect(() => {
         loadData();
@@ -175,6 +184,22 @@ export default function Agenda() {
     };
 
     const handleChangeStatus = async (id: string, newStatus: 'scheduled' | 'completed' | 'cancelled') => {
+        if (newStatus === 'completed') {
+            const appointment = appointments.find(a => a.id === id);
+            if (appointment) {
+                // Pre-cargar el precio del servicio
+                const service = services.find(s => s.id === appointment.serviceId);
+                setPaymentFormData({
+                    amount: service?.price || 0,
+                    payment_method: 'cash',
+                    notes: ''
+                });
+                setAppointmentToPay(appointment);
+                setIsPaymentModalOpen(true);
+            }
+            return;
+        }
+
         try {
             await api.updateAppointment(id, { status: newStatus });
             await loadData();
@@ -184,6 +209,37 @@ export default function Agenda() {
         } catch (error: any) {
             console.error('Error cambiando estado:', error);
             alert('Error al cambiar estado: ' + error.message);
+        }
+    };
+
+    const handleSavePayment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!appointmentToPay) return;
+
+        setSaving(true);
+        try {
+            // 1. Registrar el pago
+            await api.createPayment({
+                appointment_id: appointmentToPay.id,
+                patient_id: appointmentToPay.patientId,
+                amount: paymentFormData.amount,
+                payment_method: paymentFormData.payment_method,
+                notes: paymentFormData.notes
+            });
+
+            // 2. Cambiar estado de la cita a completada
+            await api.updateAppointment(appointmentToPay.id, { status: 'completed' });
+
+            setIsPaymentModalOpen(false);
+            setIsDetailsModalOpen(false);
+            setAppointmentToPay(null);
+            await loadData();
+            alert('Pago registrado y cita completada con éxito.');
+        } catch (error: any) {
+            console.error('Error registrando pago:', error);
+            alert('Error al registrar pago: ' + error.message);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -223,7 +279,21 @@ export default function Agenda() {
 
 
 
-    const hours = Array.from({ length: 13 }).map((_, i) => addHours(startOfDay(currentDate), i + 8));
+    const getHours = () => {
+        const slots: Date[] = [];
+        let current = startOfDay(currentDate);
+        current.setHours(8, 0, 0, 0); // Inicio a las 8:00
+        const end = new Date(current);
+        end.setHours(20, 0, 0, 0); // Fin a las 20:00
+
+        while (current < end) {
+            slots.push(new Date(current));
+            current = new Date(current.getTime() + slotInterval * 60000);
+        }
+        return slots;
+    };
+
+    const hours = getHours();
 
     const filteredAppointments = appointments.filter(apt =>
         (selectedSede === 'all' || apt.sede === selectedSede)
@@ -232,8 +302,8 @@ export default function Agenda() {
     const getAppointmentsForSlot = (day: Date, hour: Date) => {
         const cellDateStr = format(day, 'yyyy-MM-dd');
         const cellStart = new Date(day);
-        cellStart.setHours(hour.getHours(), 0, 0, 0);
-        const cellEnd = new Date(cellStart.getTime() + 60 * 60000);
+        cellStart.setHours(hour.getHours(), hour.getMinutes(), 0, 0);
+        const cellEnd = new Date(cellStart.getTime() + slotInterval * 60000);
 
         return filteredAppointments.filter(apt => {
             const aptStart = parseISO(apt.date);
@@ -241,12 +311,10 @@ export default function Agenda() {
 
             if (aptDateStr !== cellDateStr) return false;
 
-            // Encontrar el servicio para saber la duración
             const service = services.find(s => s.id === apt.serviceId);
             const duration = service?.duration || 60;
             const aptEnd = new Date(aptStart.getTime() + duration * 60000);
 
-            // Cita intercepta esta celda de hora
             return (aptStart < cellEnd) && (aptEnd > cellStart);
         });
     };
@@ -299,24 +367,15 @@ export default function Agenda() {
                 </div>
 
                 <div className="flex bg-slate-100 p-1 rounded-lg">
-                    <button
-                        onClick={() => setView('day')}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'day' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Día
-                    </button>
-                    <button
-                        onClick={() => setView('week')}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'week' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Semana
-                    </button>
-                    <button
-                        onClick={() => setView('month')}
-                        className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === 'month' ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Mes
-                    </button>
+                    {(['day', 'week', 'month'] as const).map((viewOption) => (
+                        <button
+                            key={viewOption}
+                            onClick={() => setView(viewOption)}
+                            className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === viewOption ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            {viewOption === 'day' ? 'Día' : viewOption === 'week' ? 'Semana' : 'Mes'}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -329,344 +388,35 @@ export default function Agenda() {
                         <option value="norte">Sede Norte</option>
                         <option value="sur">Sede Sur</option>
                     </select>
+
+                    <div className="flex bg-white rounded-lg border shadow-sm p-1">
+                        {[15, 30, 60].map((interval) => (
+                            <button
+                                key={interval}
+                                onClick={() => setSlotInterval(interval as 15 | 30 | 60)}
+                                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${slotInterval === interval
+                                    ? 'bg-company-blue text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {interval}m
+                            </button>
+                        ))}
+                    </div>
+
                     <button
                         onClick={() => {
                             resetForm();
                             setIsModalOpen(true);
                         }}
-                        className="bg-company-green text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600 flex items-center"
+                        className="bg-company-green text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600 flex items-center gap-2 shadow-sm"
                     >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Nueva Cita
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Nueva Cita</span>
                     </button>
                 </div>
             </div>
 
-            {/* Modal para nueva/editar cita */}
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold">
-                                {selectedAppointment ? 'Editar Cita' : 'Nueva Cita'}
-                            </h2>
-                            <button onClick={() => {
-                                setIsModalOpen(false);
-                                setSelectedAppointment(null);
-                                resetForm();
-                            }}>
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={selectedAppointment ? handleUpdateAppointment : handleSubmit} className="space-y-4">
-                            {/* 🔥 CAMPO DE PACIENTE CON AUTOCOMPLETADO */}
-                            <div className="relative" ref={searchRef}>
-                                <label className="block text-sm font-medium mb-1">Paciente *</label>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-company-blue outline-none"
-                                        placeholder="Buscar paciente por nombre o cédula..."
-                                        value={patientSearchTerm}
-                                        onChange={(e) => {
-                                            setPatientSearchTerm(e.target.value);
-                                            setShowPatientSuggestions(true);
-                                            if (formData.patientId) {
-                                                setFormData({ ...formData, patientId: '' });
-                                            }
-                                        }}
-                                        onFocus={() => setShowPatientSuggestions(true)}
-                                    />
-                                    {patientSearchTerm && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setPatientSearchTerm('');
-                                                setFormData({ ...formData, patientId: '' });
-                                                setShowPatientSuggestions(false);
-                                            }}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* Lista de sugerencias */}
-                                {showPatientSuggestions && filteredPatients.length > 0 && (
-                                    <ul className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                        {filteredPatients.map((patient) => (
-                                            <li
-                                                key={patient.id}
-                                                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
-                                                onClick={() => handleSelectPatient(patient)}
-                                            >
-                                                <User className="w-4 h-4 text-slate-400" />
-                                                <div>
-                                                    <p className="text-sm font-medium">{patient.name}</p>
-                                                    <p className="text-xs text-slate-500">{patient.cedula}</p>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-
-                                {showPatientSuggestions && patientSearchTerm && filteredPatients.length === 0 && (
-                                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-4 text-center text-slate-500">
-                                        No se encontraron pacientes
-                                    </div>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Servicio *</label>
-                                <select
-                                    required
-                                    className="w-full border rounded-lg p-2"
-                                    value={formData.serviceId}
-                                    onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
-                                >
-                                    <option value="">Seleccionar servicio</option>
-                                    {services.map(service => (
-                                        <option key={service.id} value={service.id}>
-                                            {service.name} - ${service.price} ({service.duration} min)
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Sede *</label>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            value="norte"
-                                            checked={formData.sede === 'norte'}
-                                            onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
-                                            className="mr-2"
-                                        />
-                                        Norte
-                                    </label>
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            value="sur"
-                                            checked={formData.sede === 'sur'}
-                                            onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
-                                            className="mr-2"
-                                        />
-                                        Sur
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Fecha *</label>
-                                <input
-                                    type="date"
-                                    required
-                                    min={format(new Date(), "yyyy-MM-dd")}
-                                    className="w-full border rounded-lg p-2"
-                                    value={formData.date}
-                                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Hora * (8:00 - 20:00)</label>
-                                <div className="relative">
-                                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-company-blue outline-none"
-                                        placeholder="Ej: 08:30, 14:15"
-                                        value={formData.time}
-                                        onChange={(e) => {
-                                            let value = e.target.value.replace(/[^0-9:]/g, '');
-                                            if (value.length === 2 && !value.includes(':') && formData.time.length < 2) {
-                                                value += ':';
-                                            }
-                                            setFormData({ ...formData, time: value });
-                                        }}
-                                        onBlur={(e) => {
-                                            const val = e.target.value;
-                                            const parts = val.split(':');
-                                            if (parts.length === 2) {
-                                                const h = parseInt(parts[0]);
-                                                const m = parseInt(parts[1]);
-                                                if (!isNaN(h) && !isNaN(m)) {
-                                                    const formatted = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                                                    setFormData({ ...formData, time: formatted });
-                                                }
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                {formData.serviceId && (
-                                    <p className="mt-1 text-xs text-slate-500">
-                                        Duración: {services.find(s => s.id === formData.serviceId)?.duration} minutos
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsModalOpen(false);
-                                        setSelectedAppointment(null);
-                                        resetForm();
-                                    }}
-                                    className="px-4 py-2 border rounded-lg hover:bg-slate-50"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className="px-4 py-2 bg-company-green text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
-                                >
-                                    {saving ? 'Guardando...' : (selectedAppointment ? 'Actualizar' : 'Guardar')}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal de detalles de cita */}
-            {isDetailsModalOpen && selectedAppointment && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl w-full max-w-md p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold">Detalles de la Cita</h2>
-                            <button onClick={() => setIsDetailsModalOpen(false)}>
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            {/* Información del paciente */}
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <User className="w-4 h-4 text-company-blue" />
-                                    <span className="font-semibold">Paciente</span>
-                                </div>
-                                <p className="text-lg font-bold">{selectedAppointment.patientName}</p>
-                                {patients.find(p => p.id === selectedAppointment.patientId)?.cedula && (
-                                    <p className="text-sm text-slate-600">
-                                        Cédula: {patients.find(p => p.id === selectedAppointment.patientId)?.cedula}
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Información del servicio */}
-                            <div className="bg-green-50 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Clock className="w-4 h-4 text-green-600" />
-                                    <span className="font-semibold">Servicio</span>
-                                </div>
-                                <p className="font-medium">{selectedAppointment.serviceName}</p>
-                            </div>
-
-                            {/* Fecha y hora */}
-                            <div className="bg-slate-50 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Calendar className="w-4 h-4 text-slate-600" />
-                                    <span className="font-semibold">Fecha y Hora</span>
-                                </div>
-                                <p className="font-medium">
-                                    {format(parseISO(selectedAppointment.date), "EEEE d 'de' MMMM, yyyy", { locale: es })}
-                                </p>
-                                <p className="text-sm text-slate-600">
-                                    {format(parseISO(selectedAppointment.date), 'HH:mm')} hs
-                                </p>
-                            </div>
-
-                            {/* Sede */}
-                            <div className="bg-purple-50 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <MapPin className="w-4 h-4 text-purple-600" />
-                                    <span className="font-semibold">Sede</span>
-                                </div>
-                                <p className="font-medium capitalize">{selectedAppointment.sede}</p>
-                            </div>
-
-                            {/* Estado actual */}
-                            <div className="p-3 rounded-lg border">
-                                <span className="text-sm font-semibold block mb-2">Estado actual:</span>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleChangeStatus(selectedAppointment.id, 'scheduled')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'scheduled'
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                            }`}
-                                    >
-                                        Programada
-                                    </button>
-                                    <button
-                                        onClick={() => handleChangeStatus(selectedAppointment.id, 'completed')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'completed'
-                                            ? 'bg-green-600 text-white'
-                                            : 'bg-green-100 text-green-600 hover:bg-green-200'
-                                            }`}
-                                    >
-                                        Completada
-                                    </button>
-                                    <button
-                                        onClick={() => handleChangeStatus(selectedAppointment.id, 'cancelled')}
-                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${selectedAppointment.status === 'cancelled'
-                                            ? 'bg-red-600 text-white'
-                                            : 'bg-red-100 text-red-600 hover:bg-red-200'
-                                            }`}
-                                    >
-                                        Cancelada
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Botones de acción */}
-                            <div className="flex gap-2 pt-4 border-t">
-                                <button
-                                    onClick={() => openEditModal(selectedAppointment)}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-company-blue text-white rounded-lg hover:bg-blue-600"
-                                >
-                                    <Edit className="w-4 h-4" />
-                                    Editar
-                                </button>
-                                {(user?.role === 'admin' || user?.id === selectedAppointment.professionalId) && (
-                                    <button
-                                        onClick={() => handleDeleteAppointment(selectedAppointment.id, selectedAppointment)}
-                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        Eliminar
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Ver ficha del paciente */}
-                            <button
-                                onClick={() => {
-                                    navigate(`/pacientes/${selectedAppointment.patientId}`);
-                                }}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-slate-50"
-                            >
-                                <FileText className="w-4 h-4" />
-                                Ver Ficha del Paciente
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Navegación de semanas */}
             {/* Navegación de fecha */}
             <div className="flex items-center justify-between bg-white p-3 rounded-lg border shadow-sm">
                 <div className="flex items-center gap-2">
@@ -698,7 +448,6 @@ export default function Agenda() {
             {/* Grid de agenda */}
             <div className="flex-1 overflow-auto bg-white rounded-lg border shadow-sm">
                 {view === 'month' ? (
-                    // VISTA MENSUAL
                     <div className="min-w-[800px] h-full flex flex-col">
                         <div className="grid grid-cols-7 border-b bg-slate-50">
                             {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
@@ -743,11 +492,6 @@ export default function Agenda() {
                                                     {format(parseISO(apt.date), 'HH:mm')} {apt.patientName}
                                                 </div>
                                             ))}
-                                            {dayAppointments.length > 3 && (
-                                                <div className="text-[10px] text-slate-400 text-center">
-                                                    + {dayAppointments.length - 3} más
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 );
@@ -755,9 +499,7 @@ export default function Agenda() {
                         </div>
                     </div>
                 ) : (
-                    // VISTA SEMANAL Y DIARIA
                     <div className="min-w-[800px]">
-                        {/* Header de días */}
                         <div className={`grid border-b sticky top-0 bg-slate-50 z-10 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
                             <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center w-20">Hora</div>
                             {daysToShow.map(day => (
@@ -769,12 +511,10 @@ export default function Agenda() {
                                 </div>
                             ))}
                         </div>
-
-                        {/* Grid de horas */}
-                        <div className="divide-y">
+                        <div className="divide-y relative">
                             {hours.map(hour => (
                                 <div key={hour.toString()} className={`grid group hover:bg-slate-50 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
-                                    <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center w-20">
+                                    <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center w-20 h-24">
                                         {format(hour, 'HH:mm')}
                                     </div>
                                     {daysToShow.map(day => {
@@ -786,16 +526,11 @@ export default function Agenda() {
                                                     const service = services.find(s => s.id === appointment.serviceId);
                                                     const duration = service?.duration || 60;
 
-                                                    // Calcular posición y altura relativa al slot de 1 hora (60 min)
-                                                    // Cada slot h-24 = 96px -> 1.6px por minuto
-                                                    const startMin = aptStart.getHours() * 60 + aptStart.getMinutes();
-                                                    const slotStartMin = hour.getHours() * 60;
+                                                    // Solo mostrar si el inicio de la cita cae en este exacto slot de hora/minuto
+                                                    if (aptStart.getHours() !== hour.getHours() || aptStart.getMinutes() !== hour.getMinutes()) return null;
 
-                                                    const topOffset = Math.max(0, (startMin - slotStartMin) * 1.6);
+                                                    // Altura proporcional a la duración (60 min = 96px)
                                                     const height = (duration * 1.6);
-
-                                                    // Solo mostrar si el inicio de la cita cae en este slot de hora
-                                                    if (aptStart.getHours() !== hour.getHours()) return null;
 
                                                     return (
                                                         <div
@@ -806,11 +541,10 @@ export default function Agenda() {
                                                                 setIsDetailsModalOpen(true);
                                                             }}
                                                             style={{
-                                                                top: `${topOffset}px`,
                                                                 height: `${height}px`,
                                                                 zIndex: 20
                                                             }}
-                                                            className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
+                                                            className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
                                                         >
                                                             <div className="flex justify-between items-start">
                                                                 <p className="font-bold truncate">{appointment.patientName}</p>
@@ -821,7 +555,8 @@ export default function Agenda() {
                                                                 <span className="text-[9px] font-medium">
                                                                     {format(aptStart, 'HH:mm')} ({duration}')
                                                                 </span>
-                                                                <span className="bg-white/50 px-1 rounded text-[9px]">
+                                                                <span className="bg-white/50 px-1 rounded text-[9px] flex items-center gap-1">
+                                                                    {appointment.status === 'completed' && '✓'}
                                                                     {getStatusText(appointment.status)}
                                                                 </span>
                                                             </div>
@@ -853,6 +588,295 @@ export default function Agenda() {
                     </div>
                 )}
             </div>
+
+            {/* MODAL: NUEVA / EDITAR CITA */}
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-slate-800">
+                                {selectedAppointment ? 'Editar Cita' : 'Nueva Cita'}
+                            </h2>
+                            <button onClick={() => { setIsModalOpen(false); setSelectedAppointment(null); resetForm(); }} className="p-1 hover:bg-slate-100 rounded-full">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={selectedAppointment ? handleUpdateAppointment : handleSubmit} className="space-y-4">
+                            {/* Paciente */}
+                            <div className="relative" ref={searchRef}>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Paciente *</label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-company-blue outline-none transition-all"
+                                        placeholder="Buscar por nombre o cédula..."
+                                        value={patientSearchTerm}
+                                        onChange={(e) => {
+                                            setPatientSearchTerm(e.target.value);
+                                            setShowPatientSuggestions(true);
+                                            if (formData.patientId) setFormData({ ...formData, patientId: '' });
+                                        }}
+                                        onFocus={() => setShowPatientSuggestions(true)}
+                                    />
+                                    {patientSearchTerm && (
+                                        <button type="button" onClick={() => { setPatientSearchTerm(''); setFormData({ ...formData, patientId: '' }); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                                {showPatientSuggestions && filteredPatients.length > 0 && (
+                                    <ul className="absolute z-[60] w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                        {filteredPatients.map((patient) => (
+                                            <li key={patient.id} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-0" onClick={() => handleSelectPatient(patient)}>
+                                                <p className="text-sm font-bold text-slate-800">{patient.name}</p>
+                                                <p className="text-xs text-slate-500">{patient.cedula}</p>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {/* Servicio */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Servicio *</label>
+                                <select
+                                    required
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                    value={formData.serviceId}
+                                    onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
+                                >
+                                    <option value="">Seleccionar servicio</option>
+                                    {services.map(service => (
+                                        <option key={service.id} value={service.id}>
+                                            {service.name} - ${service.price} ({service.duration} min)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Sede */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Sede *</label>
+                                <div className="flex gap-4">
+                                    {(['norte', 'sur'] as const).map(s => (
+                                        <label key={s} className="flex items-center cursor-pointer group">
+                                            <input
+                                                type="radio"
+                                                value={s}
+                                                checked={formData.sede === s}
+                                                onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
+                                                className="mr-2 w-4 h-4 text-company-blue focus:ring-company-blue"
+                                            />
+                                            <span className="text-sm font-medium text-slate-600 group-hover:text-company-blue capitalize">{s}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Fecha *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                        value={formData.date}
+                                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Hora *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-company-blue outline-none"
+                                        placeholder="Ej: 08:30"
+                                        value={formData.time}
+                                        onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-6 border-t font-semibold">
+                                <button type="button" onClick={() => { setIsModalOpen(false); setSelectedAppointment(null); resetForm(); }} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-lg">
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={saving} className="px-6 py-2 bg-company-blue text-white rounded-lg hover:bg-blue-700 shadow-lg disabled:opacity-50">
+                                    {saving ? 'Guardando...' : (selectedAppointment ? 'Actualizar' : 'Guardar Cita')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: DETALLES DE CITA */}
+            {isDetailsModalOpen && selectedAppointment && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-slate-800">Detalles de la Cita</h2>
+                            <button onClick={() => setIsDetailsModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-full">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-50 p-3 rounded-lg">
+                                    <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Paciente</span>
+                                    <p className="font-bold text-slate-800">{selectedAppointment.patientName}</p>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-lg">
+                                    <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Servicio</span>
+                                    <p className="font-bold text-slate-800">{selectedAppointment.serviceName}</p>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-lg">
+                                    <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Fecha y Hora</span>
+                                    <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        {format(parseISO(selectedAppointment.date), "d 'de' MMMM", { locale: es })}
+                                        <Clock className="w-3.5 h-3.5 ml-1" />
+                                        {format(parseISO(selectedAppointment.date), "HH:mm")}
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-3 rounded-lg">
+                                    <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Profesional</span>
+                                    <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+                                        <User className="w-3.5 h-3.5" />
+                                        {selectedAppointment.professionalName}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                                <span className="text-sm font-bold text-slate-700 block mb-3">Actualizar Estado:</span>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleChangeStatus(selectedAppointment?.id || '', 'scheduled')}
+                                        className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-bold transition-all ${selectedAppointment.status === 'scheduled'
+                                            ? 'bg-blue-600 text-white shadow-md'
+                                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                            }`}
+                                    >
+                                        Programada
+                                    </button>
+                                    <button
+                                        onClick={() => handleChangeStatus(selectedAppointment?.id || '', 'completed')}
+                                        className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-bold transition-all ${selectedAppointment.status === 'completed'
+                                            ? 'bg-green-600 text-white shadow-md cursor-default'
+                                            : 'bg-green-50 text-green-600 hover:bg-green-100'
+                                            }`}
+                                    >
+                                        {selectedAppointment.status === 'completed' ? 'Atendida ✓' : 'Completar'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleChangeStatus(selectedAppointment?.id || '', 'cancelled')}
+                                        className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-bold transition-all ${selectedAppointment.status === 'cancelled'
+                                            ? 'bg-red-600 text-white shadow-md'
+                                            : 'bg-red-50 text-red-600 hover:bg-red-100'
+                                            }`}
+                                    >
+                                        Cancelada
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                <button onClick={() => openEditModal(selectedAppointment)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium">
+                                    <Edit className="w-4 h-4" />
+                                    Editar Cita
+                                </button>
+                                {(user?.role === 'admin' || user?.id === selectedAppointment.professionalId) && (
+                                    <button onClick={() => handleDeleteAppointment(selectedAppointment.id, selectedAppointment)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all font-medium border border-red-100">
+                                        <Trash2 className="w-4 h-4" />
+                                        Eliminar
+                                    </button>
+                                )}
+                            </div>
+
+                            <button onClick={() => navigate(`/pacientes/${selectedAppointment.patientId}`)} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-600 hover:text-white transition-all font-bold border border-blue-100">
+                                <FileText className="w-4 h-4" />
+                                Ver Expediente Clínico Completo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: REGISTRAR PAGO */}
+            {isPaymentModalOpen && appointmentToPay && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md p-6 shadow-2xl scale-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-slate-800">Registrar Pago</h2>
+                            <button onClick={() => setIsPaymentModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-full">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSavePayment} className="space-y-4">
+                            <div className="bg-slate-50 p-4 rounded-lg mb-4">
+                                <p className="text-sm text-slate-500 mb-1">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></p>
+                                <p className="text-sm text-slate-500">Paciente: <span className="font-bold text-slate-800">{appointmentToPay.patientName}</span></p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Monto a Pagar ($) *</label>
+                                <input
+                                    type="number"
+                                    required
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-lg font-bold text-slate-800 focus:ring-2 focus:ring-company-blue outline-none"
+                                    value={paymentFormData.amount}
+                                    onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: Number(e.target.value) })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Método de Pago *</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['cash', 'transfer', 'card'] as const).map((method) => (
+                                        <button
+                                            key={method}
+                                            type="button"
+                                            onClick={() => setPaymentFormData({ ...paymentFormData, payment_method: method })}
+                                            className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all ${paymentFormData.payment_method === method
+                                                ? 'bg-company-blue border-company-blue text-white shadow-md'
+                                                : 'bg-white border-slate-200 text-slate-600 hover:border-company-blue'
+                                                }`}
+                                        >
+                                            {method === 'cash' ? 'Efectivo' : method === 'transfer' ? 'Transf.' : 'Tarjeta'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Notas (Opcional)</label>
+                                <textarea
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-company-blue"
+                                    rows={2}
+                                    placeholder="Ej: Pago parcial, descuento aplicado..."
+                                    value={paymentFormData.notes}
+                                    onChange={(e) => setPaymentFormData({ ...paymentFormData, notes: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-6 border-t font-semibold">
+                                <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors">
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={saving} className="flex-[2] py-3 bg-company-green text-white rounded-lg hover:bg-green-600 shadow-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {saving ? 'Procesando...' : 'Registrar Pago y Finalizar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

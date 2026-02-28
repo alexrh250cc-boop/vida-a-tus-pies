@@ -118,6 +118,12 @@ export interface ReportKPIs {
     totalAppointments: number;
     completedAppointments: number;
     estimatedIncome: number;
+    actualIncome: number;
+    paymentBreakdown: {
+        cash: number;
+        transfer: number;
+        card: number;
+    };
 }
 
 export interface AppointmentsByDay {
@@ -144,3 +150,21 @@ export interface IncomeSummary {
     unitPrice: number;
     total: number;
 }
+// ============================================
+// NUEVO: Interfaz para Pagos
+// ============================================
+export type PaymentMethod = 'cash' | 'transfer' | 'card';
+
+export interface Payment {
+    id: string;
+    appointment_id: string;
+    patient_id: string;
+    amount: number;
+    payment_method: PaymentMethod;
+    payment_date: string;
+    notes?: string;
+    created_by: string;
+    created_at: string;
+}
+
+export type PaymentFormData = Omit<Payment, 'id' | 'created_at' | 'created_by' | 'payment_date'>;

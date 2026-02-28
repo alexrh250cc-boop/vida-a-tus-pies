@@ -231,13 +231,23 @@ export default function Reportes() {
                                 <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                     <DollarSign className="w-6 h-6" />
                                 </div>
-                                <TrendingUp className="w-4 h-4 text-emerald-500" />
+                                <div className="text-right">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Real vs Estimado</span>
+                                    <span className="text-xs font-semibold text-emerald-600">
+                                        {kpis?.estimatedIncome ? Math.round((kpis.actualIncome / kpis.estimatedIncome) * 100) : 0}% recaudado
+                                    </span>
+                                </div>
                             </div>
-                            <h3 className="text-slate-500 text-sm font-medium mb-1">Ingresos Estimados</h3>
-                            <p className="text-2xl font-bold text-slate-800 tracking-tight">
-                                ${kpis?.estimatedIncome.toLocaleString('es-CO', { minimumFractionDigits: 0 })}
-                            </p>
-                            <p className="text-xs text-slate-400 mt-2 italic">Solo citas completadas</p>
+                            <h3 className="text-slate-500 text-sm font-medium mb-1">Ingresos (Real / Est.)</h3>
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-2xl font-bold text-slate-800 tracking-tight">
+                                    ${kpis?.actualIncome.toLocaleString('es-CO', { minimumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-sm text-slate-400 line-through decoration-slate-300">
+                                    ${kpis?.estimatedIncome.toLocaleString('es-CO', { minimumFractionDigits: 0 })}
+                                </p>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-2 italic">Basado en pagos registrados</p>
                         </div>
                     </>
                 )}
@@ -346,7 +356,7 @@ export default function Reportes() {
                 </div>
 
                 {/* Professional Performance */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 col-span-1 lg:col-span-2">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                     <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                         <User className="w-5 h-5 text-blue-500" />
                         Citas por Profesional
@@ -376,6 +386,49 @@ export default function Reportes() {
                         </div>
                     ) : (
                         <EmptyState message="No hay datos de profesionales para este período" />
+                    )}
+                </div>
+
+                {/* Payment Methods Chart */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-emerald-500" />
+                        Métodos de Pago
+                    </h3>
+                    {loading ? (
+                        <div className="h-48 animate-pulse bg-slate-50 rounded-lg" />
+                    ) : kpis && (kpis.paymentBreakdown.cash > 0 || kpis.paymentBreakdown.transfer > 0 || kpis.paymentBreakdown.card > 0) ? (
+                        <div className="h-[250px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={[
+                                            { name: 'Efectivo', value: kpis.paymentBreakdown.cash },
+                                            { name: 'Transferencia', value: kpis.paymentBreakdown.transfer },
+                                            { name: 'Tarjeta', value: kpis.paymentBreakdown.card },
+                                        ].filter(item => item.value > 0)}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={90}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        nameKey="name"
+                                    >
+                                        <Cell fill="#10b981" />
+                                        <Cell fill="#3b82f6" />
+                                        <Cell fill="#f59e0b" />
+                                    </Pie>
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                        formatter={(value: number) => `$${value.toLocaleString('es-CO')}`}
+                                    />
+                                    <Legend verticalAlign="bottom" height={36} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <EmptyState message="No hay datos de pagos para este período" />
                     )}
                 </div>
             </div>
@@ -420,8 +473,8 @@ export default function Reportes() {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${apt.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
-                                                        apt.status === 'cancelled' ? 'bg-rose-50 text-rose-700' :
-                                                            'bg-blue-50 text-blue-700'
+                                                    apt.status === 'cancelled' ? 'bg-rose-50 text-rose-700' :
+                                                        'bg-blue-50 text-blue-700'
                                                     }`}>
                                                     {apt.status === 'completed' ? 'Completada' :
                                                         apt.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}

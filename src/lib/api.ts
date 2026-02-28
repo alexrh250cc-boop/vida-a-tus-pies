@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Appointment, Patient, Service, User, FichaPodologica, ClinicalNote, PatientFile, ClinicalNoteFormData, ReportKPIs, AppointmentsByDay, ServiceRanking, ProfessionalStats, IncomeSummary } from '../types';
+import { Appointment, Patient, Service, User, FichaPodologica, ClinicalNote, PatientFile, ClinicalNoteFormData, ReportKPIs, AppointmentsByDay, ServiceRanking, ProfessionalStats, IncomeSummary, Payment, PaymentFormData } from '../types';
 
 export const api = {
     // Users (Profiles)
@@ -684,6 +684,65 @@ export const api = {
         return true;
     },
 
+    // Pagos
+    createPayment: async (paymentData: PaymentFormData) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
+
+        const { data, error } = await supabase
+            .from('payments')
+            .insert({
+                ...paymentData,
+                created_by: user.id
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    getPaymentsByAppointment: async (appointmentId: string): Promise<Payment[]> => {
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .eq('appointment_id', appointmentId);
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    getPaymentsByPatient: async (patientId: string): Promise<Payment[]> => {
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .eq('patient_id', patientId)
+            .order('payment_date', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    deletePayment: async (id: string) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No autenticado');
+
+        // Solo admin puede borrar pagos (según políticas propuestas)
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.role !== 'admin') {
+            throw new Error('Solo los administradores pueden eliminar pagos.');
+        }
+
+        const { error } = await supabase.from('payments').delete().eq('id', id);
+        if (error) throw error;
+        return true;
+    },
+
     // Reports
     getReportKPIs: async (startDate: string, endDate: string): Promise<ReportKPIs> => {
         // Total Patients (Total historical, not necessarily in range, but user asked for KPIs)
@@ -714,11 +773,30 @@ export const api = {
             return sum;
         }, 0) || 0;
 
+        // Actual Income (Sum of payments in range)
+        const { data: payments, error: payError } = await supabase
+            .from('payments')
+            .select('amount, payment_method')
+            .gte('payment_date', startDate)
+            .lte('payment_date', endDate);
+
+        if (payError) throw payError;
+
+        const actualIncome = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+
+        const paymentBreakdown = {
+            cash: payments?.filter(p => p.payment_method === 'cash').reduce((sum, p) => sum + Number(p.amount), 0) || 0,
+            transfer: payments?.filter(p => p.payment_method === 'transfer').reduce((sum, p) => sum + Number(p.amount), 0) || 0,
+            card: payments?.filter(p => p.payment_method === 'card').reduce((sum, p) => sum + Number(p.amount), 0) || 0,
+        };
+
         return {
             totalPatients: totalPatients || 0,
             totalAppointments,
             completedAppointments,
-            estimatedIncome
+            estimatedIncome,
+            actualIncome,
+            paymentBreakdown
         };
     },
 
