@@ -7,6 +7,7 @@ export interface User {
     email: string;
     role: Role;
     sede?: Sede; // If podologo is assigned to a specific sede primarily
+    sedes_permitidas?: Sede[]; // NUEVO: Sedes permitidas
 }
 
 export interface Service {

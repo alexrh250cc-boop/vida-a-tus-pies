@@ -64,6 +64,21 @@ export default function Agenda() {
         loadData();
     }, []);
 
+    // 🔥 EFECTO PARA CONFIGURAR SEDE INICIAL SEGÚN PERMISOS
+    useEffect(() => {
+        if (user) {
+            const permitidas = user.sedes_permitidas || [];
+            if (user.role === 'podologo' && permitidas.length > 0) {
+                // Si el podólogo solo tiene sedes específicas, no permitir 'all'
+                if (selectedSede === 'all' || !permitidas.includes(selectedSede as Sede)) {
+                    const initialSede = permitidas[0];
+                    setSelectedSede(initialSede);
+                    setFormData(prev => ({ ...prev, sede: initialSede }));
+                }
+            }
+        }
+    }, [user]);
+
     // 🔥 EFECTO PARA FILTRAR PACIENTES
     useEffect(() => {
         if (patientSearchTerm.trim() === '') {
@@ -382,11 +397,21 @@ export default function Agenda() {
                     <select
                         className="px-3 py-2 border rounded-lg text-sm bg-white"
                         value={selectedSede}
-                        onChange={(e) => setSelectedSede(e.target.value as any)}
+                        onChange={(e) => {
+                            const val = e.target.value as any;
+                            setSelectedSede(val);
+                            // Sincronizar sede del formulario si se selecciona una sede específica
+                            if (val !== 'all') {
+                                setFormData(prev => ({ ...prev, sede: val }));
+                            }
+                        }}
                     >
-                        <option value="all">Todas las Sedes</option>
-                        <option value="norte">Sede Norte</option>
-                        <option value="sur">Sede Sur</option>
+                        {user?.role === 'admin' && <option value="all">Todas las Sedes</option>}
+                        {(user?.role === 'admin' ? ['norte', 'sur'] : user?.sedes_permitidas || []).map(s => (
+                            <option key={s} value={s} className="capitalize transition-colors">
+                                Sede {s}
+                            </option>
+                        ))}
                     </select>
 
                     <div className="flex bg-white rounded-lg border shadow-sm p-1">
@@ -661,7 +686,7 @@ export default function Agenda() {
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Sede *</label>
                                 <div className="flex gap-4">
-                                    {(['norte', 'sur'] as const).map(s => (
+                                    {(user?.role === 'admin' ? (['norte', 'sur'] as const) : user?.sedes_permitidas || []).map(s => (
                                         <label key={s} className="flex items-center cursor-pointer group">
                                             <input
                                                 type="radio"
@@ -673,6 +698,9 @@ export default function Agenda() {
                                             <span className="text-sm font-medium text-slate-600 group-hover:text-company-blue capitalize">{s}</span>
                                         </label>
                                     ))}
+                                    {(!user?.role || (user.role === 'podologo' && (!user.sedes_permitidas || user.sedes_permitidas.length === 0))) && (
+                                        <p className="text-xs text-red-500 italic">No tienes sedes asignadas. Contacta al admin.</p>
+                                    )}
                                 </div>
                             </div>
 

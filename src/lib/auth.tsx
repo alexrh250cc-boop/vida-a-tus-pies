@@ -55,7 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     email: email,
                     name: data.name || email.split('@')[0],
                     role: data.role as 'admin' | 'podologo',
-                    sede: data.sede
+                    sede: data.sede,
+                    sedes_permitidas: data.sedes_permitidas || []
                 });
             }
         } catch (error) {

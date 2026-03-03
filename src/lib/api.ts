@@ -145,14 +145,12 @@ export const api = {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No autenticado');
 
-        // Obtener el perfil del usuario para ver su rol
         const { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single();
 
-        // Obtener el paciente para verificar propiedad
         const { data: patient, error: fetchError } = await supabase
             .from('patients')
             .select('created_by')
@@ -161,7 +159,6 @@ export const api = {
 
         if (fetchError || !patient) throw new Error('Paciente no encontrado');
 
-        // Validar: si es podologo, debe ser el creador. Si es admin, permite todo.
         const role = profile?.role;
         if (role === 'podologo') {
             if (patient.created_by !== user.id) {
@@ -171,28 +168,24 @@ export const api = {
             throw new Error('No tienes permisos suficientes para realizar esta acción.');
         }
 
-        // 1. Eliminar notas clínicas
         const { error: notesError } = await supabase
             .from('clinical_notes')
             .delete()
             .eq('patient_id', id);
         if (notesError) throw notesError;
 
-        // 2. Eliminar fichas podológicas
         const { error: fichasError } = await supabase
             .from('fichas_podologicas')
             .delete()
             .eq('patient_id', id);
         if (fichasError) throw fichasError;
 
-        // 3. Eliminar citas
         const { error: appointmentsError } = await supabase
             .from('appointments')
             .delete()
             .eq('patient_id', id);
         if (appointmentsError) throw appointmentsError;
 
-        // 4. Eliminar archivos (del storage y de la tabla)
         const { data: files } = await supabase
             .from('patient_files')
             .select('file_path')
@@ -208,7 +201,6 @@ export const api = {
                 .eq('patient_id', id);
         }
 
-        // 5. Finalmente eliminar el paciente
         const { error: patientError } = await supabase
             .from('patients')
             .delete()
@@ -280,7 +272,6 @@ export const api = {
             .eq('id', user.id)
             .single();
 
-        // Obtener la nota para verificar propiedad
         const { data: note, error: fetchError } = await supabase
             .from('clinical_notes')
             .select('professional_id')
@@ -316,24 +307,20 @@ export const api = {
     },
 
     uploadPatientFile: async (patientId: string, file: File) => {
-        // Generar nombre único para el archivo
         const fileExt = file.name.split('.').pop();
         const fileName = `${patientId}/${Date.now()}.${fileExt}`;
         const filePath = fileName;
 
-        // Subir archivo a Storage
         const { error: uploadError } = await supabase.storage
             .from('patient-files')
             .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
-        // Obtener URL pública
         const { data: { publicUrl } } = supabase.storage
             .from('patient-files')
             .getPublicUrl(filePath);
 
-        // Guardar referencia en la base de datos
         const { data, error } = await supabase
             .from('patient_files')
             .insert([{
@@ -351,14 +338,12 @@ export const api = {
     },
 
     deletePatientFile: async (id: string, filePath: string) => {
-        // Eliminar de Storage
         const { error: storageError } = await supabase.storage
             .from('patient-files')
             .remove([filePath]);
 
         if (storageError) throw storageError;
 
-        // Eliminar de la base de datos
         const { error } = await supabase
             .from('patient_files')
             .delete()
@@ -377,16 +362,29 @@ export const api = {
 
     // Appointments
     getAppointments: async (): Promise<Appointment[]> => {
-        const { data, error } = await supabase
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) throw new Error('No autenticado');
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser.id)
+            .single();
+
+        let query = supabase
             .from('appointments')
             .select(`
                 *,
                 patient:patients(name),
                 service:services(name),
                 professional:profiles(name)
-            `)
-            .order('date', { ascending: true });
+            `);
 
+        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query.order('date', { ascending: true });
         if (error) throw error;
 
         return (data || []).map((apt: any) => ({
@@ -405,7 +403,22 @@ export const api = {
     },
 
     createAppointment: async (appointment: Omit<Appointment, 'id' | 'patientName' | 'serviceName' | 'professionalName'>) => {
-        // Validar que la hora esté entre 8 y 20
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) throw new Error('No autenticado');
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser.id)
+            .single();
+
+        if (profile?.role === 'podologo') {
+            const permitidas = profile.sedes_permitidas || [];
+            if (!permitidas.includes(appointment.sede)) {
+                throw new Error(`No tienes permiso para agendar citas en la sede ${appointment.sede}`);
+            }
+        }
+
         const appointmentDate = new Date(appointment.date);
         const hour = appointmentDate.getHours();
 
@@ -413,7 +426,6 @@ export const api = {
             throw new Error('Las citas solo pueden agendarse entre las 8:00 y las 20:00');
         }
 
-        // Obtener duración del servicio
         const { data: service, error: serviceError } = await supabase
             .from('services')
             .select('duration')
@@ -421,9 +433,8 @@ export const api = {
             .single();
 
         if (serviceError) throw serviceError;
-        const duration = service?.duration || 60; // Default 60 if not found
+        const duration = service?.duration || 60;
 
-        // Validar traslape
         const hasOverlap = await api.checkOverlap(
             appointment.sede,
             appointment.date,
@@ -453,22 +464,42 @@ export const api = {
     },
 
     updateAppointment: async (id: string, appointment: Partial<Appointment>) => {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) throw new Error('No autenticado');
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser.id)
+            .single();
+
+        const isPodologo = profile?.role === 'podologo';
+        const permitidas = profile?.sedes_permitidas || [];
+
+        // Obtener cita actual
+        const { data: currentApt, error: aptError } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (aptError) throw aptError;
+
+        if (isPodologo) {
+            if (!permitidas.includes(currentApt.sede)) {
+                throw new Error(`No tienes permiso para modificar citas en la sede ${currentApt.sede}`);
+            }
+            if (appointment.sede && !permitidas.includes(appointment.sede)) {
+                throw new Error(`No tienes permiso para mover citas a la sede ${appointment.sede}`);
+            }
+        }
+
         // Si hay cambio de fecha o servicio, validar traslape
         if (appointment.date || appointment.serviceId || appointment.sede) {
-            // Obtener cita actual para completar datos faltantes
-            const { data: currentApt, error: aptError } = await supabase
-                .from('appointments')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            if (aptError) throw aptError;
-
             const newDate = appointment.date || currentApt.date;
             const newServiceId = appointment.serviceId || currentApt.service_id;
             const newSede = appointment.sede || currentApt.sede;
 
-            // Obtener duración del servicio
             const { data: service, error: serviceError } = await supabase
                 .from('services')
                 .select('duration')
@@ -478,7 +509,6 @@ export const api = {
             if (serviceError) throw serviceError;
             const duration = service?.duration || 60;
 
-            // Validar traslape excluyendo la cita actual
             const hasOverlap = await api.checkOverlap(
                 newSede,
                 newDate,
@@ -519,38 +549,32 @@ export const api = {
             .from('appointments')
             .select('id, date, service:services(duration)')
             .eq('sede', sede)
-            .neq('status', 'cancelled'); // No contar canceladas
+            .neq('status', 'cancelled');
 
         if (error) throw error;
         if (!appointments) return false;
 
-        const hasOverlap = appointments.some((apt: any) => {
+        return appointments.some((apt: any) => {
             if (excludeId && apt.id === excludeId) return false;
 
             const aptStart = new Date(apt.date);
             const aptDuration = apt.service?.duration || 60;
             const aptEnd = new Date(aptStart.getTime() + aptDuration * 60000);
 
-            // Verificar si hay intersección de intervalos
-            // (StartA < EndB) AND (EndA > StartB)
             return (start < aptEnd) && (end > aptStart);
         });
-
-        return hasOverlap;
     },
 
     deleteAppointment: async (id: string) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No autenticado');
 
-        // Obtener el perfil del usuario para ver su rol
         const { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single();
 
-        // Obtener la cita para verificar propiedad
         const { data: appointment, error: fetchError } = await supabase
             .from('appointments')
             .select('professional_id')
@@ -559,13 +583,11 @@ export const api = {
 
         if (fetchError || !appointment) throw new Error('Cita no encontrada');
 
-        // Si es podologo, solo puede borrar si la cita es suya
         if (profile?.role === 'podologo') {
             if (appointment.professional_id !== user.id) {
                 throw new Error('No tienes permiso para eliminar esta cita (solo puedes eliminar tus propias citas).');
             }
         } else if (profile?.role !== 'admin') {
-            // Si tiene otro rol que no es admin, tampoco debería poder borrar (seguridad extra)
             throw new Error('No tienes permisos de administrador para realizar esta acción.');
         }
 
@@ -661,7 +683,6 @@ export const api = {
             .eq('id', user.id)
             .single();
 
-        // Obtener la ficha para verificar propiedad
         const { data: ficha, error: fetchError } = await supabase
             .from('fichas_podologicas')
             .select('professional_id')
@@ -727,7 +748,6 @@ export const api = {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No autenticado');
 
-        // Solo admin puede borrar pagos (según políticas propuestas)
         const { data: profile } = await supabase
             .from('profiles')
             .select('role')
@@ -745,22 +765,36 @@ export const api = {
 
     // Reports
     getReportKPIs: async (startDate: string, endDate: string): Promise<ReportKPIs> => {
-        // Total Patients (Total historical, not necessarily in range, but user asked for KPIs)
-        // Usually, total patients is historical, but range might apply to new ones.
-        // Let's get total patients historical for now as it's a general KPI.
-        const { count: totalPatients, error: pError } = await supabase
-            .from('patients')
-            .select('*', { count: 'exact', head: true });
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) throw new Error('No autenticado');
 
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser.id)
+            .single();
+
+        const isPodologo = profile?.role === 'podologo';
+        const permitidas = profile?.sedes_permitidas || [];
+
+        let patientsQuery = supabase.from('patients').select('*', { count: 'exact', head: true });
+        if (isPodologo) {
+            patientsQuery = patientsQuery.eq('created_by', authUser.id);
+        }
+        const { count: totalPatients, error: pError } = await patientsQuery;
         if (pError) throw pError;
 
-        // Total Appointments in range
-        const { data: appointments, error: aError } = await supabase
+        let aptQuery = supabase
             .from('appointments')
-            .select('status, service:services(price)')
+            .select('status, sede, service:services(price)')
             .gte('date', startDate)
             .lte('date', endDate);
 
+        if (isPodologo && permitidas.length > 0) {
+            aptQuery = aptQuery.in('sede', permitidas);
+        }
+
+        const { data: appointments, error: aError } = await aptQuery;
         if (aError) throw aError;
 
         const totalAppointments = appointments?.length || 0;
@@ -773,14 +807,18 @@ export const api = {
             return sum;
         }, 0) || 0;
 
-        // Actual Income (Sum of payments in range)
-        const { data: payments, error: payError } = await supabase
+        let payQuery = supabase
             .from('payments')
-            .select('amount, payment_method')
+            .select('amount, payment_method, appointment:appointments(sede)')
             .gte('payment_date', startDate)
             .lte('payment_date', endDate);
 
+        const { data: rawPayments, error: payError } = await payQuery;
         if (payError) throw payError;
+
+        const payments = isPodologo && permitidas.length > 0
+            ? rawPayments?.filter(p => p.appointment && permitidas.includes((p.appointment as any).sede))
+            : rawPayments;
 
         const actualIncome = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
 
@@ -801,13 +839,24 @@ export const api = {
     },
 
     getAppointmentsByDay: async (startDate: string, endDate: string): Promise<AppointmentsByDay[]> => {
-        const { data, error } = await supabase
-            .from('appointments')
-            .select('date, status')
-            .gte('date', startDate)
-            .lte('date', endDate)
-            .order('date', { ascending: true });
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser?.id)
+            .single();
 
+        let query = supabase
+            .from('appointments')
+            .select('date, status, sede')
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query.order('date', { ascending: true });
         if (error) throw error;
 
         const daysMap: Record<string, AppointmentsByDay> = {};
@@ -826,19 +875,31 @@ export const api = {
     },
 
     getServicesRanking: async (startDate: string, endDate: string): Promise<ServiceRanking[]> => {
-        const { data, error } = await supabase
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser?.id)
+            .single();
+
+        let query = supabase
             .from('appointments')
-            .select('status, service:services(name, price)')
+            .select('status, sede, service:services(name, price)')
             .gte('date', startDate)
             .lte('date', endDate);
 
+        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
         const servicesMap: Record<string, ServiceRanking> = {};
 
-        data?.forEach(apt => {
+        data?.forEach((apt: any) => {
             if (apt.service) {
-                const s = apt.service as any;
+                const s = apt.service;
                 if (!servicesMap[s.name]) {
                     servicesMap[s.name] = { name: s.name, count: 0, income: 0 };
                 }
@@ -853,19 +914,31 @@ export const api = {
     },
 
     getAppointmentsByProfessional: async (startDate: string, endDate: string): Promise<ProfessionalStats[]> => {
-        const { data, error } = await supabase
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser?.id)
+            .single();
+
+        let query = supabase
             .from('appointments')
-            .select('professional:profiles(name)')
+            .select('sede, professional:profiles(name)')
             .gte('date', startDate)
             .lte('date', endDate);
 
+        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
         const profMap: Record<string, ProfessionalStats> = {};
 
-        data?.forEach(apt => {
+        data?.forEach((apt: any) => {
             if (apt.professional) {
-                const p = apt.professional as any;
+                const p = apt.professional;
                 if (!profMap[p.name]) {
                     profMap[p.name] = { name: p.name, count: 0 };
                 }
@@ -877,20 +950,32 @@ export const api = {
     },
 
     getIncomeSummary: async (startDate: string, endDate: string): Promise<IncomeSummary[]> => {
-        const { data, error } = await supabase
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser?.id)
+            .single();
+
+        let query = supabase
             .from('appointments')
-            .select('status, service:services(name, price)')
+            .select('status, sede, service:services(name, price)')
             .gte('date', startDate)
             .lte('date', endDate)
             .eq('status', 'completed');
 
+        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
         const summaryMap: Record<string, IncomeSummary> = {};
 
-        data?.forEach(apt => {
+        data?.forEach((apt: any) => {
             if (apt.service) {
-                const s = apt.service as any;
+                const s = apt.service;
                 if (!summaryMap[s.name]) {
                     summaryMap[s.name] = { serviceName: s.name, count: 0, unitPrice: s.price, total: 0 };
                 }
