@@ -3,7 +3,7 @@ import {
     BarChart3, Users, Calendar, CheckCircle2, TrendingUp,
     PieChart as PieChartIcon, User, DollarSign,
     AlertCircle, RefreshCw, Download, Pill, ShoppingBag, Package,
-    Sparkles, Activity, Clock, ArrowUpRight
+    Sparkles, Clock
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
