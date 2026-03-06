@@ -158,8 +158,8 @@ export type PaymentMethod = 'cash' | 'transfer' | 'card';
 
 export interface Payment {
     id: string;
-    appointment_id: string;
-    patient_id: string;
+    appointment_id?: string;
+    patient_id?: string;
     amount: number;
     payment_method: PaymentMethod;
     payment_date: string;
@@ -169,3 +169,81 @@ export interface Payment {
 }
 
 export type PaymentFormData = Omit<Payment, 'id' | 'created_at' | 'created_by' | 'payment_date'>;
+
+// ============================================
+// NUEVO: Interfaz para Productos y Ventas
+// ============================================
+export interface Product {
+    id: string;
+    name: string;
+    description: string | null;
+    price: number;
+    stock: number;
+    category: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Sale {
+    id: string;
+    patient_id: string | null;
+    patient_name?: string;
+    appointment_id: string | null;
+    total: number;
+    payment_method: PaymentMethod;
+    date: string;
+    created_by: string;
+    created_at: string;
+    status: 'completed' | 'cancelled';
+    cancel_reason?: string | null;
+    cancelled_at?: string | null;
+    cancelled_by?: string | null;
+}
+
+export interface SaleItem {
+    id: string;
+    sale_id: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+}
+
+export interface SaleItemWithCategory extends SaleItem {
+    category?: string | null;
+}
+
+export interface SaleWithItems extends Sale {
+    items: SaleItemWithCategory[];
+}
+
+export interface SalesMetrics {
+    totalRevenue: number;
+    citasRevenue: number;       // Ingresos por servicios profesionales
+    medicationsRevenue: number; // Ingresos por medicamentos
+    otrosRevenue: number;       // Ingresos por otros productos
+    totalSalesCount: number;
+    citasCount: number;
+    medicationsCount: number;
+    otrosCount: number;
+    // Comparativas (deltas vs periodo anterior/día anterior)
+    comparison?: {
+        totalRevenueDelta: number;
+        citasRevenueDelta: number;
+        medicationsRevenueDelta: number;
+        otrosRevenueDelta: number;
+    };
+    topProducts: { name: string; quantity: number; revenue: number }[];
+    revenueByDay: { date: string; total: number; medications: number; citas: number; otros: number }[];
+    revenueByCategory: { category: string; total: number }[];
+    recentProducts: { name: string; quantity: number; date: string; category?: string | null; price: number; type?: 'cita' | 'med' | 'prod' }[];
+}
+
+export interface ProductReportData {
+    id: string;
+    name: string;
+    category: string | null;
+    stock: number;
+    soldQuantity: number;
+    revenue: number;
+}

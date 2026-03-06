@@ -6,7 +6,10 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900;
+    @apply bg-[#f0f4ff] text-slate-900;
+  }
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
   }
 }
 
@@ -20,13 +23,25 @@
     animation: shimmer 1.5s infinite;
   }
 
-  @keyframes shimmer {
-    0% {
-      background-position: -200% 0;
-    }
+  .card-hover {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lg;
+  }
 
-    100% {
-      background-position: 200% 0;
-    }
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-violet-600;
+  }
+
+  .animate-fade-up {
+    animation: fadeUp 0.4s ease-out both;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 }

@@ -11,12 +11,13 @@ import {
     addDays,
     startOfDay,
     parseISO,
+    isValid,
     isSameMonth,
     isSameDay
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
-import { Appointment, Sede, Patient, Service, PaymentMethod } from '../types';
+import { Appointment, Sede, Patient, Service, PaymentMethod, Product } from '../types';
 import {
     ChevronLeft, ChevronRight, Plus, X, Calendar, Clock,
     Edit, Trash2, User, FileText, Search
@@ -34,6 +35,7 @@ export default function Agenda() {
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [saving, setSaving] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
     const [formData, setFormData] = useState({
@@ -50,26 +52,25 @@ export default function Agenda() {
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
     const searchRef = useRef<HTMLDivElement>(null);
 
-    // 🔥 NUEVOS ESTADOS PARA INTERVALOS Y PAGOS
+    // Intervalos
     const [slotInterval, setSlotInterval] = useState<15 | 30 | 60>(60);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [appointmentToPay, setAppointmentToPay] = useState<Appointment | null>(null);
     const [paymentFormData, setPaymentFormData] = useState({
         amount: 0,
         payment_method: 'cash' as PaymentMethod,
-        notes: ''
+        notes: '',
+        selectedProducts: [] as { id: string, name: string, price: number, quantity: number }[]
     });
 
     useEffect(() => {
         loadData();
     }, []);
 
-    // 🔥 EFECTO PARA CONFIGURAR SEDE INICIAL SEGÚN PERMISOS
     useEffect(() => {
         if (user) {
             const permitidas = user.sedes_permitidas || [];
             if (user.role === 'podologo' && permitidas.length > 0) {
-                // Si el podólogo solo tiene sedes específicas, no permitir 'all'
                 if (selectedSede === 'all' || !permitidas.includes(selectedSede as Sede)) {
                     const initialSede = permitidas[0];
                     setSelectedSede(initialSede);
@@ -79,20 +80,18 @@ export default function Agenda() {
         }
     }, [user]);
 
-    // 🔥 EFECTO PARA FILTRAR PACIENTES
     useEffect(() => {
         if (patientSearchTerm.trim() === '') {
             setFilteredPatients([]);
         } else {
             const filtered = patients.filter(patient =>
-                patient.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
-                patient.cedula.toLowerCase().includes(patientSearchTerm.toLowerCase())
+                (patient.name?.toLowerCase() || '').includes(patientSearchTerm.toLowerCase()) ||
+                (patient.cedula?.toLowerCase() || '').includes(patientSearchTerm.toLowerCase())
             );
             setFilteredPatients(filtered);
         }
     }, [patientSearchTerm, patients]);
 
-    // 🔥 EFECTO PARA CERRAR SUGERENCIAS AL HACER CLICK FUERA
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -106,14 +105,16 @@ export default function Agenda() {
     const loadData = async () => {
         try {
             setLoading(true);
-            const [appointmentsData, patientsData, servicesData] = await Promise.all([
+            const [appointmentsData, patientsData, servicesData, productsData] = await Promise.all([
                 api.getAppointments(),
                 api.getPatients(),
-                api.getServices()
+                api.getServices(),
+                api.getProducts()
             ]);
             setAppointments(appointmentsData);
             setPatients(patientsData);
             setServices(servicesData);
+            setProducts(productsData);
         } catch (error) {
             console.error('Error cargando datos:', error);
         } finally {
@@ -177,7 +178,6 @@ export default function Agenda() {
     const handleDeleteAppointment = async (id: string, appointment?: Appointment) => {
         const aptToDelete = appointment || selectedAppointment;
 
-        // Validación de permisos
         if (user?.role === 'podologo' && aptToDelete?.professionalId !== user?.id) {
             alert('No tienes permiso para eliminar esta cita.');
             return;
@@ -202,12 +202,12 @@ export default function Agenda() {
         if (newStatus === 'completed') {
             const appointment = appointments.find(a => a.id === id);
             if (appointment) {
-                // Pre-cargar el precio del servicio
                 const service = services.find(s => s.id === appointment.serviceId);
                 setPaymentFormData({
                     amount: service?.price || 0,
                     payment_method: 'cash',
-                    notes: ''
+                    notes: '',
+                    selectedProducts: []
                 });
                 setAppointmentToPay(appointment);
                 setIsPaymentModalOpen(true);
@@ -227,29 +227,39 @@ export default function Agenda() {
         }
     };
 
+    // ✅ FUNCIÓN CORREGIDA - AHORA INCLUYE appointment_id
     const handleSavePayment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!appointmentToPay) return;
 
         setSaving(true);
         try {
-            // 1. Registrar el pago
-            await api.createPayment({
-                appointment_id: appointmentToPay.id,
+            // CREAR VENTA CON appointment_id (AHORA SÍ SE GUARDA LA ASOCIACIÓN)
+            await api.createSale({
+                appointment_id: appointmentToPay.id, // ← ESTO ES LO CRÍTICO
                 patient_id: appointmentToPay.patientId,
-                amount: paymentFormData.amount,
+                items: paymentFormData.selectedProducts.map(p => ({
+                    product_id: p.id,
+                    quantity: p.quantity,
+                    unit_price: p.price
+                })),
+                service_amount: paymentFormData.amount,
                 payment_method: paymentFormData.payment_method,
-                notes: paymentFormData.notes
+                notes: paymentFormData.notes || `Cita Completada: ${appointmentToPay.patientName}`
             });
 
-            // 2. Cambiar estado de la cita a completada
+            // ACTUALIZAR ESTADO DE LA CITA
             await api.updateAppointment(appointmentToPay.id, { status: 'completed' });
 
+            // CERRAR MODALES
             setIsPaymentModalOpen(false);
             setIsDetailsModalOpen(false);
             setAppointmentToPay(null);
+            
+            // RECARGAR DATOS
             await loadData();
-            alert('Pago registrado y cita completada con éxito.');
+            
+            alert('✅ Pago registrado y cita completada con éxito.');
         } catch (error: any) {
             console.error('Error registrando pago:', error);
             alert('Error al registrar pago: ' + error.message);
@@ -258,7 +268,6 @@ export default function Agenda() {
         }
     };
 
-    // 🔥 FUNCIÓN PARA SELECCIONAR PACIENTE
     const handleSelectPatient = (patient: Patient) => {
         setFormData({ ...formData, patientId: patient.id });
         setPatientSearchTerm(`${patient.name} - ${patient.cedula}`);
@@ -292,14 +301,12 @@ export default function Agenda() {
         setIsModalOpen(true);
     };
 
-
-
     const getHours = () => {
         const slots: Date[] = [];
         let current = startOfDay(currentDate);
-        current.setHours(8, 0, 0, 0); // Inicio a las 8:00
+        current.setHours(8, 0, 0, 0);
         const end = new Date(current);
-        end.setHours(20, 0, 0, 0); // Fin a las 20:00
+        end.setHours(20, 0, 0, 0);
 
         while (current < end) {
             slots.push(new Date(current));
@@ -315,26 +322,36 @@ export default function Agenda() {
     );
 
     const getAppointmentsForSlot = (day: Date, hour: Date) => {
+        if (!day || !hour) return [];
+        
         const cellDateStr = format(day, 'yyyy-MM-dd');
         const cellStart = new Date(day);
         cellStart.setHours(hour.getHours(), hour.getMinutes(), 0, 0);
         const cellEnd = new Date(cellStart.getTime() + slotInterval * 60000);
 
         return filteredAppointments.filter(apt => {
-            const aptStart = parseISO(apt.date);
-            const aptDateStr = format(aptStart, 'yyyy-MM-dd');
+            try {
+                if (!apt?.date) return false;
+                
+                const aptStart = parseISO(apt.date);
+                
+                if (!isValid(aptStart)) return false;
+                
+                const aptDateStr = format(aptStart, 'yyyy-MM-dd');
 
-            if (aptDateStr !== cellDateStr) return false;
+                if (aptDateStr !== cellDateStr) return false;
 
-            const service = services.find(s => s.id === apt.serviceId);
-            const duration = service?.duration || 60;
-            const aptEnd = new Date(aptStart.getTime() + duration * 60000);
+                const service = services.find(s => s.id === apt.serviceId);
+                const duration = Number(service?.duration) || 60;
+                const aptEnd = new Date(aptStart.getTime() + duration * 60000);
 
-            return (aptStart < cellEnd) && (aptEnd > cellStart);
+                return (aptStart < cellEnd) && (aptEnd > cellStart);
+            } catch (error) {
+                console.error('Error procesando cita:', apt, error);
+                return false;
+            }
         });
     };
-
-
 
     const getStatusText = (status: string) => {
         switch (status) {
@@ -345,8 +362,9 @@ export default function Agenda() {
         }
     };
 
-    // 🔥 COLOR CODING BY SERVICE
-    const getServiceColor = (serviceName: string) => {
+    const getServiceColor = (serviceName: string | undefined) => {
+        if (!serviceName) return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200';
+        
         const name = serviceName.toLowerCase();
         if (name.includes('consulta')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200';
         if (name.includes('uña') || name.includes('corte')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200';
@@ -355,7 +373,6 @@ export default function Agenda() {
         return 'bg-blue-100 border-company-blue text-blue-800 hover:bg-blue-200';
     };
 
-    // View Logic
     const getDaysToShow = () => {
         if (view === 'day') {
             return [currentDate];
@@ -364,7 +381,6 @@ export default function Agenda() {
             const start = startOfWeek(currentDate, { weekStartsOn: 1 });
             return Array.from({ length: 7 }).map((_, i) => addDays(start, i));
         }
-        // Month view handled separately
         return [];
     };
 
@@ -400,7 +416,6 @@ export default function Agenda() {
                         onChange={(e) => {
                             const val = e.target.value as any;
                             setSelectedSede(val);
-                            // Sincronizar sede del formulario si se selecciona una sede específica
                             if (val !== 'all') {
                                 setFormData(prev => ({ ...prev, sede: val }));
                             }
@@ -486,9 +501,15 @@ export default function Agenda() {
                                 start: startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
                                 end: endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 })
                             }).map(day => {
-                                const dayAppointments = filteredAppointments.filter(apt =>
-                                    isSameDay(parseISO(apt.date), day)
-                                );
+                                const dayAppointments = filteredAppointments.filter(apt => {
+                                    try {
+                                        if (!apt?.date) return false;
+                                        const aptDate = parseISO(apt.date);
+                                        return isValid(aptDate) && isSameDay(aptDate, day);
+                                    } catch {
+                                        return false;
+                                    }
+                                });
                                 const isCurrentMonth = isSameMonth(day, currentDate);
                                 const isToday = isSameDay(day, new Date());
 
@@ -514,7 +535,7 @@ export default function Agenda() {
                                         <div className="space-y-1 overflow-y-auto max-h-[80px]">
                                             {dayAppointments.slice(0, 3).map(apt => (
                                                 <div key={apt.id} className={`text-[10px] truncate px-1 rounded border-l-2 ${getServiceColor(apt.serviceName)}`}>
-                                                    {format(parseISO(apt.date), 'HH:mm')} {apt.patientName}
+                                                    {apt.date ? format(parseISO(apt.date), 'HH:mm') : '--:--'} {apt.patientName}
                                                 </div>
                                             ))}
                                         </div>
@@ -547,46 +568,53 @@ export default function Agenda() {
                                         return (
                                             <div key={day.toString()} className={`p-0 border-r h-24 relative transition-all duration-200 ${appointmentsInSlot.length === 0 ? 'hover:bg-blue-50/50 hover:shadow-inner cursor-pointer' : ''}`}>
                                                 {appointmentsInSlot.map(appointment => {
-                                                    const aptStart = parseISO(appointment.date);
-                                                    const service = services.find(s => s.id === appointment.serviceId);
-                                                    const duration = service?.duration || 60;
+                                                    try {
+                                                        if (!appointment?.date) return null;
+                                                        
+                                                        const aptStart = parseISO(appointment.date);
+                                                        if (!isValid(aptStart)) return null;
+                                                        
+                                                        const service = services.find(s => s.id === appointment.serviceId);
+                                                        const duration = Number(service?.duration) || 60;
 
-                                                    // Solo mostrar si el inicio de la cita cae en este exacto slot de hora/minuto
-                                                    if (aptStart.getHours() !== hour.getHours() || aptStart.getMinutes() !== hour.getMinutes()) return null;
+                                                        if (aptStart.getHours() !== hour.getHours() || aptStart.getMinutes() !== hour.getMinutes()) return null;
 
-                                                    // Altura proporcional a la duración (60 min = 96px)
-                                                    const height = (duration * 1.6);
+                                                        const height = (duration * 1.6);
 
-                                                    return (
-                                                        <div
-                                                            key={appointment.id}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedAppointment(appointment);
-                                                                setIsDetailsModalOpen(true);
-                                                            }}
-                                                            style={{
-                                                                height: `${height}px`,
-                                                                zIndex: 20
-                                                            }}
-                                                            className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
-                                                        >
-                                                            <div className="flex justify-between items-start">
-                                                                <p className="font-bold truncate">{appointment.patientName}</p>
-                                                                <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                        return (
+                                                            <div
+                                                                key={appointment.id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedAppointment(appointment);
+                                                                    setIsDetailsModalOpen(true);
+                                                                }}
+                                                                style={{
+                                                                    height: `${height}px`,
+                                                                    zIndex: 20
+                                                                }}
+                                                                className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
+                                                            >
+                                                                <div className="flex justify-between items-start">
+                                                                    <p className="font-bold truncate">{appointment.patientName}</p>
+                                                                    <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                                </div>
+                                                                <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
+                                                                <div className="mt-0.5 flex items-center justify-between">
+                                                                    <span className="text-[9px] font-medium">
+                                                                        {format(aptStart, 'HH:mm')} ({duration}')
+                                                                    </span>
+                                                                    <span className="bg-white/50 px-1 rounded text-[9px] flex items-center gap-1">
+                                                                        {appointment.status === 'completed' && '✓'}
+                                                                        {getStatusText(appointment.status)}
+                                                                    </span>
+                                                                </div>
                                                             </div>
-                                                            <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
-                                                            <div className="mt-0.5 flex items-center justify-between">
-                                                                <span className="text-[9px] font-medium">
-                                                                    {format(aptStart, 'HH:mm')} ({duration}')
-                                                                </span>
-                                                                <span className="bg-white/50 px-1 rounded text-[9px] flex items-center gap-1">
-                                                                    {appointment.status === 'completed' && '✓'}
-                                                                    {getStatusText(appointment.status)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    );
+                                                        );
+                                                    } catch (error) {
+                                                        console.error('Error renderizando cita:', error);
+                                                        return null;
+                                                    }
                                                 })}
                                                 {appointmentsInSlot.length === 0 && (
                                                     <div
@@ -628,7 +656,6 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={selectedAppointment ? handleUpdateAppointment : handleSubmit} className="space-y-4">
-                            {/* Paciente */}
                             <div className="relative" ref={searchRef}>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Paciente *</label>
                                 <div className="relative">
@@ -664,7 +691,6 @@ export default function Agenda() {
                                 )}
                             </div>
 
-                            {/* Servicio */}
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Servicio *</label>
                                 <select
@@ -682,7 +708,6 @@ export default function Agenda() {
                                 </select>
                             </div>
 
-                            {/* Sede */}
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Sede *</label>
                                 <div className="flex gap-4">
@@ -766,9 +791,9 @@ export default function Agenda() {
                                     <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Fecha y Hora</span>
                                     <div className="flex items-center gap-1.5 text-slate-700 font-medium">
                                         <Calendar className="w-3.5 h-3.5" />
-                                        {format(parseISO(selectedAppointment.date), "d 'de' MMMM", { locale: es })}
+                                        {selectedAppointment.date ? format(parseISO(selectedAppointment.date), "d 'de' MMMM", { locale: es }) : 'Fecha no disponible'}
                                         <Clock className="w-3.5 h-3.5 ml-1" />
-                                        {format(parseISO(selectedAppointment.date), "HH:mm")}
+                                        {selectedAppointment.date ? format(parseISO(selectedAppointment.date), "HH:mm") : '--:--'}
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 p-3 rounded-lg">
@@ -847,20 +872,83 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSavePayment} className="space-y-4">
-                            <div className="bg-slate-50 p-4 rounded-lg mb-4">
-                                <p className="text-sm text-slate-500 mb-1">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></p>
+                            <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-500">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></span>
+                                    <span className="font-bold text-slate-800">${(services.find(s => s.id === appointmentToPay.serviceId)?.price || 0).toLocaleString()}</span>
+                                </div>
                                 <p className="text-sm text-slate-500">Paciente: <span className="font-bold text-slate-800">{appointmentToPay.patientName}</span></p>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Monto a Pagar ($) *</label>
-                                <input
-                                    type="number"
-                                    required
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-lg font-bold text-slate-800 focus:ring-2 focus:ring-company-blue outline-none"
-                                    value={paymentFormData.amount}
-                                    onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: Number(e.target.value) })}
-                                />
+                            <div className="border rounded-lg p-3 space-y-3">
+                                <label className="block text-xs font-bold text-slate-500 uppercase">Añadir Productos</label>
+                                <div className="flex gap-2">
+                                    <select
+                                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none"
+                                        onChange={(e) => {
+                                            const prod = products.find(p => p.id === e.target.value);
+                                            if (prod) {
+                                                const existing = paymentFormData.selectedProducts.find(p => p.id === prod.id);
+                                                if (existing) {
+                                                    setPaymentFormData({
+                                                        ...paymentFormData,
+                                                        selectedProducts: paymentFormData.selectedProducts.map(p =>
+                                                            p.id === prod.id ? { ...p, quantity: p.quantity + 1 } : p
+                                                        )
+                                                    });
+                                                } else {
+                                                    setPaymentFormData({
+                                                        ...paymentFormData,
+                                                        selectedProducts: [...paymentFormData.selectedProducts, { id: prod.id, name: prod.name, price: prod.price, quantity: 1 }]
+                                                    });
+                                                }
+                                                e.target.value = '';
+                                            }
+                                        }}
+                                        value=""
+                                    >
+                                        <option value="">Seleccionar producto...</option>
+                                        {products.filter(p => p.stock > 0).map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} - ${p.price}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {paymentFormData.selectedProducts.length > 0 && (
+                                    <div className="space-y-2 max-h-32 overflow-y-auto pt-2 border-t border-slate-100">
+                                        {paymentFormData.selectedProducts.map((p, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPaymentFormData({
+                                                            ...paymentFormData,
+                                                            selectedProducts: paymentFormData.selectedProducts.filter((_, i) => i !== idx)
+                                                        })}
+                                                        className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                    </button>
+                                                    <span className="text-slate-700">{p.name} (x{p.quantity})</span>
+                                                </div>
+                                                <span className="font-medium text-slate-900">${(p.price * p.quantity).toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="pt-2">
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Monto Total a Pagar ($)</label>
+                                <div className="w-full bg-slate-900 border border-slate-200 rounded-lg p-3 text-2xl font-black text-white flex justify-between items-center">
+                                    <span className="text-sm font-medium text-slate-400">Total:</span>
+                                    <span>
+                                        ${(
+                                            (services.find(s => s.id === appointmentToPay.serviceId)?.price || 0) +
+                                            paymentFormData.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0)
+                                        ).toLocaleString()}
+                                    </span>
+                                </div>
                             </div>
 
                             <div>

@@ -5,9 +5,10 @@ import { useAuth } from '../lib/auth';
 import {
     Search, Plus, FileText, Phone, AlertCircle, X,
     Edit, Trash2, ChevronLeft, ChevronRight,
-    Mail, Calendar, User, RefreshCw
+    Mail, Calendar, User, RefreshCw, Download
 } from 'lucide-react';
 import { Patient } from '../types';
+import { exportToExcel } from '../lib/exportUtils';
 
 export default function Pacientes() {
     const navigate = useNavigate();
@@ -132,6 +133,16 @@ export default function Pacientes() {
         }
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const dataToExport = await api.getPatientsForExport();
+            exportToExcel(dataToExport, 'Pacientes_VidaATusPies');
+        } catch (error) {
+            console.error('Error exportando:', error);
+            alert('Error al exportar datos');
+        }
+    };
+
     const formatDate = (dateString?: string) => {
         if (!dateString) return 'N/A';
         try {
@@ -211,6 +222,14 @@ export default function Pacientes() {
                     >
                         <Plus className="w-4 h-4" />
                         Nuevo Paciente
+                    </button>
+                    <button
+                        onClick={handleExportExcel}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 transition-colors shadow-sm"
+                        title="Exportar a Excel"
+                    >
+                        <Download className="w-4 h-4" />
+                        <span className="hidden sm:inline">Exportar Excel</span>
                     </button>
                     <button
                         onClick={loadPatients}

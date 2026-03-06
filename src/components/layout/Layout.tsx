@@ -9,7 +9,9 @@ import {
     BarChart3,
     LogOut,
     Menu,
-    X
+    X,
+    Package,
+    ShoppingCart
 } from 'lucide-react';
 import clsx from 'clsx';
 import Logo from '../ui/Logo';
@@ -24,6 +26,8 @@ export default function Layout() {
         { name: 'Agenda', href: '/agenda', icon: Calendar },
         { name: 'Pacientes', href: '/pacientes', icon: Users },
         { name: 'Servicios', href: '/servicios', icon: Stethoscope },
+        { name: 'Inventario', href: '/inventario', icon: Package },
+        { name: 'Ventas', href: '/ventas', icon: ShoppingCart },
         { name: 'Reportes', href: '/reportes', icon: BarChart3 },
     ];
 

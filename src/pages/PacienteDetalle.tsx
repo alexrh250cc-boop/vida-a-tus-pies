@@ -9,6 +9,7 @@ import {
     Edit, Printer, Activity, Download, X,
     Calendar, Cake, User, Phone, AlertCircle
 } from 'lucide-react';
+import { exportPatientHistoryToPDF } from '../lib/exportUtils';
 import FichaPodologicaModal from '../components/ui/FichaPodologicaModal';
 
 export default function PacienteDetalle() {
@@ -263,6 +264,17 @@ export default function PacienteDetalle() {
         }
     };
 
+    const handleExportHistory = async () => {
+        if (!id) return;
+        try {
+            const historyData = await api.getPatientHistoryForExport(id);
+            exportPatientHistoryToPDF(historyData);
+        } catch (error) {
+            console.error('Error exportando historia:', error);
+            alert('Error al generar la historia clínica en PDF');
+        }
+    };
+
     // Función para obtener icono según tipo de archivo
     const getFileIcon = (fileType: string) => {
         if (fileType === 'application/pdf') return '📄';
@@ -342,6 +354,14 @@ export default function PacienteDetalle() {
                     >
                         <FileText className="w-4 h-4" />
                         Nueva Ficha Podológica
+                    </button>
+                    <button
+                        onClick={handleExportHistory}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 shadow-sm transition-colors"
+                        title="Exportar Historia Clínica PDF"
+                    >
+                        <Download className="w-4 h-4" />
+                        <span className="hidden sm:inline">Exportar PDF</span>
                     </button>
                     <button
                         onClick={() => window.print()}
