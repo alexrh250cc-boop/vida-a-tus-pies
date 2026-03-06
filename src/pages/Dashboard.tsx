@@ -395,7 +395,7 @@ export default function Dashboard() {
                                                 axisLine={false} tickLine={false}
                                                 tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }}
                                                 tickFormatter={val => {
-                                                    const [year, month, day] = val.split('-');
+                                                    const [_, month, day] = val.split('-');
                                                     return `${day}/${month}`;
                                                 }}
                                             />
