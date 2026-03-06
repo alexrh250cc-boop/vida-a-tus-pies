@@ -571,7 +571,7 @@ export const api = {
     },
 
     deleteAppointment: async (id: string) => {
-        console.log('🗑️ deleteAppointment llamado con ID:', id); // ← AGREGADO
+        console.log('🗑️ deleteAppointment llamado con ID:', id);
         
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No autenticado');
@@ -600,18 +600,19 @@ export const api = {
 
         // ✅ FIX: Eliminar ventas y pagos asociados antes de eliminar la cita
         // 1. Obtener ventas asociadas a esta cita
-        console.log('🔍 Buscando ventas con appointment_id:', id); // ← AGREGADO
+        console.log('🔍 Buscando ventas con appointment_id:', id);
         
-        const { data: associatedSales, error: salesQueryError } = await supabase
+        // 🔧 CORREGIDO: Eliminada la variable no usada 'salesQueryError'
+        const { data: associatedSales } = await supabase
             .from('sales')
             .select('id')
             .eq('appointment_id', id);
 
-        console.log('📊 Ventas encontradas:', associatedSales); // ← AGREGADO
+        console.log('📊 Ventas encontradas:', associatedSales);
 
         if (associatedSales && associatedSales.length > 0) {
             const saleIds = associatedSales.map(s => s.id);
-            console.log('🗑️ Eliminando sale_items para saleIds:', saleIds); // ← AGREGADO
+            console.log('🗑️ Eliminando sale_items para saleIds:', saleIds);
 
             // 2. Eliminar sale_items de esas ventas (en cascada manual)
             const { error: itemsError } = await supabase
@@ -619,44 +620,44 @@ export const api = {
                 .delete()
                 .in('sale_id', saleIds);
             if (itemsError) {
-                console.error('❌ Error eliminando sale_items:', itemsError); // ← AGREGADO
+                console.error('❌ Error eliminando sale_items:', itemsError);
                 throw itemsError;
             }
 
             // 3. Eliminar las ventas
-            console.log('🗑️ Eliminando ventas con ids:', saleIds); // ← AGREGADO
+            console.log('🗑️ Eliminando ventas con ids:', saleIds);
             const { error: salesError } = await supabase
                 .from('sales')
                 .delete()
                 .in('id', saleIds);
             if (salesError) {
-                console.error('❌ Error eliminando ventas:', salesError); // ← AGREGADO
+                console.error('❌ Error eliminando ventas:', salesError);
                 throw salesError;
             }
         } else {
-            console.log('⚠️ No se encontraron ventas asociadas'); // ← AGREGADO
+            console.log('⚠️ No se encontraron ventas asociadas');
         }
 
         // 4. Eliminar pagos asociados a esta cita
-        console.log('🗑️ Eliminando pagos con appointment_id:', id); // ← AGREGADO
+        console.log('🗑️ Eliminando pagos con appointment_id:', id);
         const { error: paymentsError } = await supabase
             .from('payments')
             .delete()
             .eq('appointment_id', id);
         if (paymentsError) {
-            console.error('❌ Error eliminando pagos:', paymentsError); // ← AGREGADO
+            console.error('❌ Error eliminando pagos:', paymentsError);
             throw paymentsError;
         }
 
         // 5. Eliminar la cita
-        console.log('🗑️ Eliminando cita con id:', id); // ← AGREGADO
+        console.log('🗑️ Eliminando cita con id:', id);
         const { error } = await supabase.from('appointments').delete().eq('id', id);
         if (error) {
-            console.error('❌ Error eliminando cita:', error); // ← AGREGADO
+            console.error('❌ Error eliminando cita:', error);
             throw error;
         }
         
-        console.log('✅ Cita eliminada correctamente'); // ← AGREGADO
+        console.log('✅ Cita eliminada correctamente');
         return true;
     },
 
