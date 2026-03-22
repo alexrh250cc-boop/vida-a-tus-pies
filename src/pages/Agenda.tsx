@@ -60,7 +60,10 @@ export default function Agenda() {
         amount: 0,
         payment_method: 'cash' as PaymentMethod,
         notes: '',
-        selectedProducts: [] as { id: string, name: string, price: number, quantity: number }[]
+        selectedProducts: [] as { id: string, name: string, price: number, quantity: number }[],
+        adjustment_type: 'none' as 'none' | 'discount' | 'extra',
+        adjustment_amount: 0,
+        adjustment_reason: ''
     });
 
     useEffect(() => {
@@ -148,7 +151,8 @@ export default function Agenda() {
         }
     };
 
-    const handleUpdateAppointment = async () => {
+    const handleUpdateAppointment = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         if (!selectedAppointment) return;
 
         setSaving(true);
@@ -207,7 +211,10 @@ export default function Agenda() {
                     amount: service?.price || 0,
                     payment_method: 'cash',
                     notes: '',
-                    selectedProducts: []
+                    selectedProducts: [],
+                    adjustment_type: 'none',
+                    adjustment_amount: 0,
+                    adjustment_reason: ''
                 });
                 setAppointmentToPay(appointment);
                 setIsPaymentModalOpen(true);
@@ -227,25 +234,49 @@ export default function Agenda() {
         }
     };
 
-    // ✅ FUNCIÓN CORREGIDA - AHORA INCLUYE appointment_id
+    // ✅ FUNCIÓN CORREGIDA - AHORA USA LA FECHA DE LA CITA
     const handleSavePayment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!appointmentToPay) return;
 
         setSaving(true);
         try {
-            // CREAR VENTA CON appointment_id (AHORA SÍ SE GUARDA LA ASOCIACIÓN)
+            // Calcular monto final del servicio con ajustes
+            const adjustmentAmt = Number(paymentFormData.adjustment_amount) || 0;
+            let finalServiceAmount = Number(paymentFormData.amount) || 0;
+            let adjustmentDetails = '';
+
+            if (paymentFormData.adjustment_type === 'discount') {
+                finalServiceAmount -= adjustmentAmt;
+                adjustmentDetails = ` - Descuento: $${adjustmentAmt}`;
+            } else if (paymentFormData.adjustment_type === 'extra') {
+                finalServiceAmount += adjustmentAmt;
+                adjustmentDetails = ` + Extra: $${adjustmentAmt}`;
+            }
+
+            if (finalServiceAmount < 0) finalServiceAmount = 0; // Prevenir montos negativos
+
+            let finalNotes = paymentFormData.notes || `Cita Completada: ${appointmentToPay.patientName}`;
+            if (paymentFormData.adjustment_type !== 'none' && adjustmentAmt > 0) {
+                finalNotes += `\n[Ajuste Aplicado${adjustmentDetails}]`;
+                if (paymentFormData.adjustment_reason) {
+                    finalNotes += ` Motivo: ${paymentFormData.adjustment_reason}`;
+                }
+            }
+
+            // CREAR VENTA CON appointment_id Y LA FECHA DE LA CITA
             await api.createSale({
-                appointment_id: appointmentToPay.id, // ← ESTO ES LO CRÍTICO
+                appointment_id: appointmentToPay.id,
                 patient_id: appointmentToPay.patientId,
+                date: appointmentToPay.date, // ← USAR LA FECHA DE LA CITA
                 items: paymentFormData.selectedProducts.map(p => ({
                     product_id: p.id,
                     quantity: p.quantity,
                     unit_price: p.price
                 })),
-                service_amount: paymentFormData.amount,
+                service_amount: finalServiceAmount,
                 payment_method: paymentFormData.payment_method,
-                notes: paymentFormData.notes || `Cita Completada: ${appointmentToPay.patientName}`
+                notes: finalNotes // Notas guardadas con auditoría de ajuste
             });
 
             // ACTUALIZAR ESTADO DE LA CITA
@@ -255,10 +286,10 @@ export default function Agenda() {
             setIsPaymentModalOpen(false);
             setIsDetailsModalOpen(false);
             setAppointmentToPay(null);
-            
+
             // RECARGAR DATOS
             await loadData();
-            
+
             alert('✅ Pago registrado y cita completada con éxito.');
         } catch (error: any) {
             console.error('Error registrando pago:', error);
@@ -323,7 +354,7 @@ export default function Agenda() {
 
     const getAppointmentsForSlot = (day: Date, hour: Date) => {
         if (!day || !hour) return [];
-        
+
         const cellDateStr = format(day, 'yyyy-MM-dd');
         const cellStart = new Date(day);
         cellStart.setHours(hour.getHours(), hour.getMinutes(), 0, 0);
@@ -332,11 +363,11 @@ export default function Agenda() {
         return filteredAppointments.filter(apt => {
             try {
                 if (!apt?.date) return false;
-                
+
                 const aptStart = parseISO(apt.date);
-                
+
                 if (!isValid(aptStart)) return false;
-                
+
                 const aptDateStr = format(aptStart, 'yyyy-MM-dd');
 
                 if (aptDateStr !== cellDateStr) return false;
@@ -364,7 +395,7 @@ export default function Agenda() {
 
     const getServiceColor = (serviceName: string | undefined) => {
         if (!serviceName) return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200';
-        
+
         const name = serviceName.toLowerCase();
         if (name.includes('consulta')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200';
         if (name.includes('uña') || name.includes('corte')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200';
@@ -570,10 +601,10 @@ export default function Agenda() {
                                                 {appointmentsInSlot.map(appointment => {
                                                     try {
                                                         if (!appointment?.date) return null;
-                                                        
+
                                                         const aptStart = parseISO(appointment.date);
                                                         if (!isValid(aptStart)) return null;
-                                                        
+
                                                         const service = services.find(s => s.id === appointment.serviceId);
                                                         const duration = Number(service?.duration) || 60;
 
@@ -872,12 +903,69 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSavePayment} className="space-y-4">
-                            <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm text-slate-500">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></span>
-                                    <span className="font-bold text-slate-800">${(services.find(s => s.id === appointmentToPay.serviceId)?.price || 0).toLocaleString()}</span>
+                            <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-3">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-500">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-slate-500 font-medium">Precio: $</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            className="w-20 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-company-blue outline-none font-bold text-slate-800"
+                                            value={paymentFormData.amount}
+                                            onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
                                 </div>
-                                <p className="text-sm text-slate-500">Paciente: <span className="font-bold text-slate-800">{appointmentToPay.patientName}</span></p>
+                                <p className="text-sm text-slate-500 border-t border-slate-200 pt-2">Paciente: <span className="font-bold text-slate-800">{appointmentToPay.patientName}</span></p>
+                            </div>
+
+                            {/* NUEVA SECCIÓN DE AJUSTES */}
+                            <div className="border rounded-lg p-3 space-y-3 bg-white">
+                                <label className="block text-xs font-bold text-slate-500 uppercase">Ajuste Manual al Servicio</label>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentFormData({ ...paymentFormData, adjustment_type: paymentFormData.adjustment_type === 'discount' ? 'none' : 'discount' })}
+                                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all border ${paymentFormData.adjustment_type === 'discount' ? 'bg-red-500 text-white border-red-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        Descuento (-)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentFormData({ ...paymentFormData, adjustment_type: paymentFormData.adjustment_type === 'extra' ? 'none' : 'extra' })}
+                                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all border ${paymentFormData.adjustment_type === 'extra' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        Extra (+)
+                                    </button>
+                                </div>
+                                {paymentFormData.adjustment_type !== 'none' && (
+                                    <div className="grid grid-cols-3 gap-2 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <div className="col-span-1">
+                                            <label className="block text-xs text-slate-500 mb-1 font-medium">Monto ($)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-company-blue outline-none"
+                                                value={paymentFormData.adjustment_amount || ''}
+                                                onChange={(e) => setPaymentFormData({ ...paymentFormData, adjustment_amount: parseFloat(e.target.value) || 0 })}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="block text-xs text-slate-500 mb-1 font-medium">Motivo (Opcional)</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-company-blue outline-none"
+                                                value={paymentFormData.adjustment_reason}
+                                                onChange={(e) => setPaymentFormData({ ...paymentFormData, adjustment_reason: e.target.value })}
+                                                placeholder="Ej. Promoción, domicilio..."
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="border rounded-lg p-3 space-y-3">
@@ -944,9 +1032,10 @@ export default function Agenda() {
                                     <span className="text-sm font-medium text-slate-400">Total:</span>
                                     <span>
                                         ${(
-                                            (services.find(s => s.id === appointmentToPay.serviceId)?.price || 0) +
+                                            Math.max(0, (Number(paymentFormData.amount) || 0) +
+                                                (paymentFormData.adjustment_type === 'extra' ? (Number(paymentFormData.adjustment_amount) || 0) : paymentFormData.adjustment_type === 'discount' ? -(Number(paymentFormData.adjustment_amount) || 0) : 0)) +
                                             paymentFormData.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0)
-                                        ).toLocaleString()}
+                                        ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                             </div>

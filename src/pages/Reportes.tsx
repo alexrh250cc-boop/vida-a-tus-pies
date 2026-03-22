@@ -9,7 +9,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
     ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, parseISO, startOfYear, endOfYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { api } from '../lib/api';
 import {
@@ -22,7 +22,7 @@ import { KPICard, KPICardSkeleton } from '../components/ui/KPICard';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-type DateRangeType = 'today' | 'week' | 'month' | 'custom';
+type DateRangeType = 'today' | 'week' | 'month' | 'year' | 'custom';
 type TabType = 'ventas' | 'citas' | 'productos';
 
 // ── Mensajes amigables según contexto ─────────────────────────────────────
@@ -58,7 +58,7 @@ const getRandomMessage = (type: 'ventas' | 'citas' | 'productos'): string => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const EmptyState = ({ message, type }: { message: string; type?: 'ventas' | 'citas' | 'productos' }) => {
     const emoji = type === 'ventas' ? '🛒' : type === 'citas' ? '📅' : '📦';
-    
+
     return (
         <div className="flex flex-col items-center justify-center p-12 text-center h-full gap-3 group">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-sm">
@@ -120,6 +120,9 @@ export default function Reportes() {
         } else if (type === 'month') {
             setStartDate(format(startOfMonth(today), 'yyyy-MM-dd'));
             setEndDate(format(endOfMonth(today), 'yyyy-MM-dd'));
+        } else if (type === 'year') {
+            setStartDate(format(startOfYear(today), 'yyyy-MM-dd'));
+            setEndDate(format(endOfYear(today), 'yyyy-MM-dd'));
         }
         setRangeType(type);
     };
@@ -150,9 +153,9 @@ export default function Reportes() {
 
             // ✅ CORREGIDO: Eliminé el límite de 10 para mostrar TODAS las citas del período
             const filteredApts = allApts
-                .filter(a => { 
-                    const d = a.date.split('T')[0]; 
-                    return d >= startDate && d <= endDate; 
+                .filter(a => {
+                    const d = a.date.split('T')[0];
+                    return d >= startDate && d <= endDate;
                 })
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setRecentAppointments(filteredApts);
@@ -182,7 +185,7 @@ export default function Reportes() {
         sales.forEach(sale => {
             // ✅ FILTRO: Ignorar ventas canceladas
             if (sale.status === 'cancelled') return;
-            
+
             const isAppointment = !!sale.appointment_id;
             const saleType = isAppointment ? 'Cita' : 'Directa';
             if (salesTypeFilter !== 'all') {
@@ -266,26 +269,26 @@ export default function Reportes() {
 
     // Tab definitions con badges de contador
     const tabs: { id: TabType; label: string; icon: any; activeColor: string; count?: number }[] = [
-        { 
-            id: 'ventas', 
-            label: 'Ventas', 
-            icon: DollarSign, 
+        {
+            id: 'ventas',
+            label: 'Ventas',
+            icon: DollarSign,
             activeColor: 'border-blue-600 text-blue-600 bg-blue-50',
-            count: salesReportItems.length 
+            count: salesReportItems.length
         },
-        { 
-            id: 'citas', 
-            label: 'Citas', 
-            icon: Calendar, 
+        {
+            id: 'citas',
+            label: 'Citas',
+            icon: Calendar,
             activeColor: 'border-amber-500 text-amber-600 bg-amber-50',
-            count: recentAppointments.length 
+            count: recentAppointments.length
         },
-        { 
-            id: 'productos', 
-            label: 'Productos', 
-            icon: Package, 
+        {
+            id: 'productos',
+            label: 'Productos',
+            icon: Package,
             activeColor: 'border-emerald-500 text-emerald-600 bg-emerald-50',
-            count: productReport.length 
+            count: productReport.length
         },
     ];
 
@@ -325,6 +328,7 @@ export default function Reportes() {
                                 { id: 'today', label: 'Hoy' },
                                 { id: 'week', label: 'Semana' },
                                 { id: 'month', label: 'Mes' },
+                                { id: 'year', label: 'Año' },
                             ].map(r => (
                                 <button
                                     key={r.id}

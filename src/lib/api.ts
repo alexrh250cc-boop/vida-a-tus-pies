@@ -572,7 +572,7 @@ export const api = {
 
     deleteAppointment: async (id: string) => {
         console.log('🗑️ deleteAppointment llamado con ID:', id);
-        
+
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('No autenticado');
 
@@ -601,7 +601,7 @@ export const api = {
         // ✅ FIX: Eliminar ventas y pagos asociados antes de eliminar la cita
         // 1. Obtener ventas asociadas a esta cita
         console.log('🔍 Buscando ventas con appointment_id:', id);
-        
+
         // 🔧 CORREGIDO: Eliminada la variable no usada 'salesQueryError'
         const { data: associatedSales } = await supabase
             .from('sales')
@@ -656,7 +656,7 @@ export const api = {
             console.error('❌ Error eliminando cita:', error);
             throw error;
         }
-        
+
         console.log('✅ Cita eliminada correctamente');
         return true;
     },
@@ -1096,6 +1096,7 @@ export const api = {
     createSale: async (saleData: {
         patient_id?: string | null;
         appointment_id?: string | null;
+        date?: string; // ← NUEVO PARÁMETRO PARA LA FECHA DE LA CITA
         items: { product_id: string; quantity: number; unit_price: number }[];
         payment_method: PaymentMethod;
         service_amount?: number;
@@ -1107,16 +1108,24 @@ export const api = {
         const items_total = saleData.items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
         const total = items_total + (saleData.service_amount || 0);
 
-        // 1. Create Sale
+        // 1. Create Sale - USAR LA FECHA PROPORCIONADA O LA ACTUAL
+        const saleInsertData: any = {
+            patient_id: saleData.patient_id || null,
+            appointment_id: saleData.appointment_id || null,
+            total,
+            payment_method: saleData.payment_method,
+            created_by: user.id,
+            notes: saleData.notes || null
+        };
+
+        // Si se proporcionó una fecha, usarla para created_at
+        if (saleData.date) {
+            saleInsertData.created_at = saleData.date;
+        }
+
         const { data: sale, error: saleError } = await supabase
             .from('sales')
-            .insert([{
-                patient_id: saleData.patient_id || null,
-                appointment_id: saleData.appointment_id || null,
-                total,
-                payment_method: saleData.payment_method,
-                created_by: user.id
-            }])
+            .insert([saleInsertData])
             .select()
             .single();
 
@@ -1143,14 +1152,20 @@ export const api = {
             }
         }
 
-        // 3. Create Payment record
-        await api.createPayment({
+        // 3. Create Payment record - Usar la misma fecha si se proporcionó
+        const paymentData: any = {
             amount: total,
             payment_method: saleData.payment_method,
             patient_id: saleData.patient_id || undefined,
             appointment_id: saleData.appointment_id || undefined,
             notes: saleData.notes || `Venta #${sale.id.slice(0, 8)}`
-        });
+        };
+
+        if (saleData.date) {
+            paymentData.payment_date = saleData.date;
+        }
+
+        await api.createPayment(paymentData);
 
         return sale;
     },
@@ -1171,6 +1186,7 @@ export const api = {
         if (error) throw error;
         return (data || []).map((s: any) => ({
             ...s,
+            date: s.created_at,
             patient_name: s.patient?.name || 'Mostrador',
             items: (s.items || []).map((item: any) => ({
                 ...item,
@@ -1255,7 +1271,7 @@ export const api = {
                     recent.push({
                         name,
                         quantity: item.quantity,
-                        date: sale.date,
+                        date: sale.created_at || sale.date,
                         category: cat,
                         price: item.unit_price,
                         type: isMed ? 'med' : 'prod'
@@ -1267,7 +1283,7 @@ export const api = {
                     recent.push({
                         name: 'Servicio Podológico',
                         quantity: 1,
-                        date: sale.date,
+                        date: sale.created_at || sale.date,
                         category: 'Cita',
                         price: sAmt,
                         type: 'cita'

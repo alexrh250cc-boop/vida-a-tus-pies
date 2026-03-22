@@ -20,11 +20,12 @@ import {
 import { es } from 'date-fns/locale';
 import { KPICard, KPICardSkeleton } from '../components/ui/KPICard';
 
-type Period = 'semana' | 'mes' | 'año';
+type Period = 'hoy' | 'semana' | 'mes' | 'año';
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899'];
 
 const PERIOD_LABEL: Record<Period, string> = {
+    hoy: 'vs ayer',
     semana: 'vs semana ant.',
     mes: 'vs mes ant.',
     año: 'vs año ant.',
@@ -156,9 +157,12 @@ export default function Dashboard() {
         try {
             const today = new Date();
             let startDate = '', endDate = '';
-            
+
             // Calcular fechas según período seleccionado
-            if (periodo === 'semana') {
+            if (periodo === 'hoy') {
+                startDate = format(today, 'yyyy-MM-dd');
+                endDate = format(today, 'yyyy-MM-dd');
+            } else if (periodo === 'semana') {
                 startDate = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
                 endDate = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
             } else if (periodo === 'mes') {
@@ -169,8 +173,8 @@ export default function Dashboard() {
                 endDate = format(endOfYear(today), 'yyyy-MM-dd');
             }
 
-            console.log('📅 Fechas seleccionadas:', { 
-                startDate, 
+            console.log('📅 Fechas seleccionadas:', {
+                startDate,
                 endDate,
                 startISO: `${startDate}T00:00:00`,
                 endISO: `${endDate}T23:59:59`
@@ -182,14 +186,14 @@ export default function Dashboard() {
                 api.getAppointments(),
                 api.getSalesDashboardMetrics(`${startDate}T00:00:00`, `${endDate}T23:59:59`),
             ]);
-            
+
             setPatients(pts);
             setAppointments(apts);
             setSalesMetrics(metrics);
-            
+
             console.log('📊 metrics recibido:', metrics);
             console.log('📈 revenueByDay:', metrics?.revenueByDay);
-            
+
         } catch (error) {
             console.error('❌ Error loading dashboard data', error);
         } finally {
@@ -254,7 +258,7 @@ export default function Dashboard() {
                             {format(new Date(), "EEEE, dd 'de' MMMM yyyy", { locale: es }).replace(/^\w/, c => c.toUpperCase())}
                         </p>
                         <h1 className="text-3xl font-black text-white flex items-center gap-2">
-                            ¡Hola, {user?.name?.split(' ')[0]}! 
+                            ¡Hola, {user?.name?.split(' ')[0]}!
                             <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
                         </h1>
                         <p className="text-blue-200 text-sm mt-1">Resumen de rendimiento unificado</p>
@@ -273,7 +277,7 @@ export default function Dashboard() {
 
                         {/* Period selector */}
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
-                            {(['semana', 'mes', 'año'] as Period[]).map(p => (
+                            {(['hoy', 'semana', 'mes', 'año'] as Period[]).map(p => (
                                 <button
                                     key={p}
                                     onClick={() => setPeriodo(p)}
@@ -385,7 +389,7 @@ export default function Dashboard() {
                             <>
                                 {salesMetrics?.revenueByDay && Array.isArray(salesMetrics.revenueByDay) && salesMetrics.revenueByDay.length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart 
+                                        <BarChart
                                             data={salesMetrics.revenueByDay}
                                             margin={{ top: 30, right: 30, left: 20, bottom: 20 }}
                                         >
@@ -405,33 +409,33 @@ export default function Dashboard() {
                                                 width={70}
                                                 tickFormatter={val => `$${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}`}
                                             />
-                                            <Tooltip 
+                                            <Tooltip
                                                 content={<CustomBarTooltip />}
                                                 cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
                                             />
-                                            <Bar 
-                                                dataKey="citas" 
-                                                name="Citas" 
-                                                fill="#3b82f6" 
-                                                radius={[8, 8, 0, 0]} 
+                                            <Bar
+                                                dataKey="citas"
+                                                name="Citas"
+                                                fill="#3b82f6"
+                                                radius={[8, 8, 0, 0]}
                                                 barSize={60}
                                                 animationDuration={1000}
                                                 animationEasing="ease-in-out"
                                             />
-                                            <Bar 
-                                                dataKey="medications" 
-                                                name="Medicamentos" 
-                                                fill="#10b981" 
-                                                radius={[8, 8, 0, 0]} 
+                                            <Bar
+                                                dataKey="medications"
+                                                name="Medicamentos"
+                                                fill="#10b981"
+                                                radius={[8, 8, 0, 0]}
                                                 barSize={60}
                                                 animationDuration={1000}
                                                 animationEasing="ease-in-out"
                                             />
-                                            <Bar 
-                                                dataKey="otros" 
-                                                name="Otros" 
-                                                fill="#f59e0b" 
-                                                radius={[8, 8, 0, 0]} 
+                                            <Bar
+                                                dataKey="otros"
+                                                name="Otros"
+                                                fill="#f59e0b"
+                                                radius={[8, 8, 0, 0]}
                                                 barSize={60}
                                                 animationDuration={1000}
                                                 animationEasing="ease-in-out"
@@ -484,18 +488,18 @@ export default function Dashboard() {
                                         formatter={(v: number) => `$${v.toLocaleString('es-CO')}`}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 30px rgb(0 0 0 / 0.12)' }}
                                     />
-                                    <Legend 
-                                        verticalAlign="bottom" 
-                                        height={36} 
-                                        iconType="circle" 
+                                    <Legend
+                                        verticalAlign="bottom"
+                                        height={36}
+                                        iconType="circle"
                                         iconSize={10}
                                         wrapperStyle={{ paddingTop: '20px' }}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (
-                            <EmptyState 
-                                icon={PieChartIcon} 
+                            <EmptyState
+                                icon={PieChartIcon}
                                 text={getRandomMessage('ventas')}
                                 type="ventas"
                             />
@@ -543,21 +547,21 @@ export default function Dashboard() {
                         <ul className="space-y-3">
                             {feedItems.slice(0, 6).map((item, idx) => {
                                 const typeConfig = {
-                                    cita: { 
-                                        bg: 'bg-blue-100', 
-                                        text: 'text-blue-600', 
+                                    cita: {
+                                        bg: 'bg-blue-100',
+                                        text: 'text-blue-600',
                                         icon: Calendar,
                                         badge: 'bg-blue-50 text-blue-700'
                                     },
-                                    med: { 
-                                        bg: 'bg-emerald-100', 
-                                        text: 'text-emerald-600', 
+                                    med: {
+                                        bg: 'bg-emerald-100',
+                                        text: 'text-emerald-600',
                                         icon: Pill,
                                         badge: 'bg-emerald-50 text-emerald-700'
                                     },
-                                    prod: { 
-                                        bg: 'bg-amber-100', 
-                                        text: 'text-amber-600', 
+                                    prod: {
+                                        bg: 'bg-amber-100',
+                                        text: 'text-amber-600',
                                         icon: Package,
                                         badge: 'bg-amber-50 text-amber-700'
                                     },
@@ -589,8 +593,8 @@ export default function Dashboard() {
                             })}
                         </ul>
                     ) : (
-                        <EmptyState 
-                            icon={ShoppingBag} 
+                        <EmptyState
+                            icon={ShoppingBag}
                             text={getRandomMessage('ventas')}
                             type="ventas"
                         />
@@ -655,8 +659,8 @@ export default function Dashboard() {
                             ))}
                         </div>
                     ) : todayAppointments.length === 0 ? (
-                        <EmptyState 
-                            icon={Calendar} 
+                        <EmptyState
+                            icon={Calendar}
                             text={getRandomMessage('citas')}
                             type="citas"
                         />
@@ -706,7 +710,7 @@ export default function Dashboard() {
 // ── Shared empty state mejorado ───────────────────────────────────────────────
 function EmptyState({ icon: Icon, text, type }: { icon: any; text: string; type?: 'ventas' | 'citas' | 'productos' }) {
     const emoji = type === 'ventas' ? '🛒' : type === 'citas' ? '📅' : '📦';
-    
+
     return (
         <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-center group">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-sm">
