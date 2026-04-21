@@ -53,7 +53,7 @@ export default function Agenda() {
     const searchRef = useRef<HTMLDivElement>(null);
 
     // Intervalos
-    const [slotInterval, setSlotInterval] = useState<15 | 30 | 60>(60);
+    const [slotInterval, setSlotInterval] = useState<15 | 30 | 60>(30);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [appointmentToPay, setAppointmentToPay] = useState<Appointment | null>(null);
     const [paymentFormData, setPaymentFormData] = useState({
@@ -608,9 +608,15 @@ export default function Agenda() {
                                                         const service = services.find(s => s.id === appointment.serviceId);
                                                         const duration = Number(service?.duration) || 60;
 
-                                                        if (aptStart.getHours() !== hour.getHours() || aptStart.getMinutes() !== hour.getMinutes()) return null;
+                                                        const slotStart = new Date(day);
+                                                        slotStart.setHours(hour.getHours(), hour.getMinutes(), 0, 0);
+                                                        const slotEnd = new Date(slotStart.getTime() + slotInterval * 60000);
+
+                                                        if (aptStart < slotStart || aptStart >= slotEnd) return null;
 
                                                         const height = (duration * 1.6);
+                                                        const minutesOffset = (aptStart.getTime() - slotStart.getTime()) / 60000;
+                                                        const topOffset = (minutesOffset * 1.6);
 
                                                         return (
                                                             <div
@@ -622,6 +628,7 @@ export default function Agenda() {
                                                                 }}
                                                                 style={{
                                                                     height: `${height}px`,
+                                                                    top: `${topOffset}px`,
                                                                     zIndex: 20
                                                                 }}
                                                                 className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
