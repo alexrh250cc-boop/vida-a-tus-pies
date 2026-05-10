@@ -16,7 +16,8 @@ import {
     AlertCircle,
     ChevronDown,
     ChevronUp,
-    XCircle
+    XCircle,
+    Calendar
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -39,6 +40,7 @@ export default function Ventas() {
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
     // Historial state
     const [sales, setSales] = useState<SaleWithItems[]>([]);
@@ -117,7 +119,16 @@ export default function Ventas() {
         if (cart.length === 0) return;
         setIsProcessing(true);
         try {
+            let dateToUse = new Date().toISOString();
+            if (customDate) {
+                const now = new Date();
+                const [year, month, day] = customDate.split('-');
+                now.setFullYear(parseInt(year), parseInt(month) - 1, parseInt(day));
+                dateToUse = now.toISOString();
+            }
+
             await api.createSale({
+                custom_date: dateToUse,
                 items: cart.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity,
@@ -126,6 +137,7 @@ export default function Ventas() {
                 payment_method: paymentMethod
             });
             setCart([]);
+            setCustomDate(format(new Date(), 'yyyy-MM-dd'));
             setShowSuccess(true);
             await loadProducts();
             setTimeout(() => setShowSuccess(false), 3000);
@@ -364,6 +376,19 @@ export default function Ventas() {
                             </div>
 
                             <div className="p-5 bg-white rounded-b-2xl border-t border-slate-100 shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)] space-y-5">
+                                <div className="space-y-2.5">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        Fecha de Venta
+                                    </label>
+                                    <input 
+                                        type="date"
+                                        value={customDate}
+                                        onChange={(e) => setCustomDate(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-slate-700"
+                                    />
+                                </div>
+
                                 <div className="space-y-2.5">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <CreditCard className="w-3.5 h-3.5" />

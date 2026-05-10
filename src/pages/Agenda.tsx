@@ -268,7 +268,7 @@ export default function Agenda() {
             await api.createSale({
                 appointment_id: appointmentToPay.id,
                 patient_id: appointmentToPay.patientId,
-                date: appointmentToPay.date, // ← USAR LA FECHA DE LA CITA
+                custom_date: appointmentToPay.date, // ← USAR LA FECHA DE LA CITA
                 items: paymentFormData.selectedProducts.map(p => ({
                     product_id: p.id,
                     quantity: p.quantity,

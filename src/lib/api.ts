@@ -1096,7 +1096,7 @@ export const api = {
     createSale: async (saleData: {
         patient_id?: string | null;
         appointment_id?: string | null;
-        date?: string; // ← NUEVO PARÁMETRO PARA LA FECHA DE LA CITA
+        custom_date?: string; // ← NUEVO PARÁMETRO PARA LA FECHA DE LA CITA
         items: { product_id: string; quantity: number; unit_price: number }[];
         payment_method: PaymentMethod;
         service_amount?: number;
@@ -1119,8 +1119,8 @@ export const api = {
         };
 
         // Si se proporcionó una fecha, usarla para created_at
-        if (saleData.date) {
-            saleInsertData.created_at = saleData.date;
+        if (saleData.custom_date) {
+            saleInsertData.created_at = saleData.custom_date;
         }
 
         const { data: sale, error: saleError } = await supabase
@@ -1161,8 +1161,8 @@ export const api = {
             notes: saleData.notes || `Venta #${sale.id.slice(0, 8)}`
         };
 
-        if (saleData.date) {
-            paymentData.payment_date = saleData.date;
+        if (saleData.custom_date) {
+            paymentData.payment_date = saleData.custom_date;
         }
 
         await api.createPayment(paymentData);
