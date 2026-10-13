@@ -195,9 +195,18 @@ export interface Sale {
     created_by: string;
     created_at: string;
     status: 'completed' | 'cancelled';
+    sede: Sede;
     cancel_reason?: string | null;
     cancelled_at?: string | null;
     cancelled_by?: string | null;
+}
+
+export interface ProfessionalProduction {
+    professionalId: string;
+    professionalName: string;
+    sede: Sede;
+    appointmentsCount: number;
+    revenue: number;
 }
 
 export interface SaleItem {

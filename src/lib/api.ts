@@ -3,7 +3,7 @@ import {
     Patient, Appointment, Service, User, FichaPodologica, ClinicalNote, PatientFile,
     ClinicalNoteFormData, ReportKPIs, AppointmentsByDay, ServiceRanking, ProfessionalStats,
     IncomeSummary, Payment, PaymentFormData, Product, PaymentMethod,
-    SaleWithItems, SalesMetrics, ProductReportData
+    SaleWithItems, SalesMetrics, ProductReportData, Sede, ProfessionalProduction
 } from '../types';
 
 export const api = {
@@ -366,7 +366,7 @@ export const api = {
     },
 
     // Appointments
-    getAppointments: async (): Promise<Appointment[]> => {
+    getAppointments: async (sedeFilter?: string): Promise<Appointment[]> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) throw new Error('No autenticado');
 
@@ -385,7 +385,9 @@ export const api = {
                 professional:profiles(name)
             `);
 
-        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
             query = query.in('sede', profile.sedes_permitidas);
         }
 
@@ -829,7 +831,7 @@ export const api = {
     },
 
     // Reports
-    getReportKPIs: async (startDate: string, endDate: string): Promise<ReportKPIs> => {
+    getReportKPIs: async (startDate: string, endDate: string, sedeFilter?: string): Promise<ReportKPIs> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) throw new Error('No autenticado');
 
@@ -855,7 +857,9 @@ export const api = {
             .gte('date', startDate)
             .lte('date', endDate);
 
-        if (isPodologo && permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            aptQuery = aptQuery.eq('sede', sedeFilter);
+        } else if (isPodologo && permitidas.length > 0) {
             aptQuery = aptQuery.in('sede', permitidas);
         }
 
@@ -881,7 +885,9 @@ export const api = {
         const { data: rawPayments, error: payError } = await payQuery;
         if (payError) throw payError;
 
-        const payments = isPodologo && permitidas.length > 0
+        const payments = (sedeFilter && sedeFilter !== 'all')
+            ? rawPayments?.filter(p => p.appointment && (p.appointment as any).sede === sedeFilter)
+            : (isPodologo && permitidas.length > 0)
             ? rawPayments?.filter(p => p.appointment && permitidas.includes((p.appointment as any).sede))
             : rawPayments;
 
@@ -903,7 +909,7 @@ export const api = {
         };
     },
 
-    getAppointmentsByDay: async (startDate: string, endDate: string): Promise<AppointmentsByDay[]> => {
+    getAppointmentsByDay: async (startDate: string, endDate: string, sedeFilter?: string): Promise<AppointmentsByDay[]> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const { data: profile } = await supabase
             .from('profiles')
@@ -917,7 +923,9 @@ export const api = {
             .gte('date', startDate)
             .lte('date', endDate);
 
-        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
             query = query.in('sede', profile.sedes_permitidas);
         }
 
@@ -939,7 +947,7 @@ export const api = {
         return Object.values(daysMap);
     },
 
-    getServicesRanking: async (startDate: string, endDate: string): Promise<ServiceRanking[]> => {
+    getServicesRanking: async (startDate: string, endDate: string, sedeFilter?: string): Promise<ServiceRanking[]> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const { data: profile } = await supabase
             .from('profiles')
@@ -953,7 +961,9 @@ export const api = {
             .gte('date', startDate)
             .lte('date', endDate);
 
-        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
             query = query.in('sede', profile.sedes_permitidas);
         }
 
@@ -978,7 +988,7 @@ export const api = {
         return Object.values(servicesMap).sort((a, b) => b.count - a.count);
     },
 
-    getAppointmentsByProfessional: async (startDate: string, endDate: string): Promise<ProfessionalStats[]> => {
+    getAppointmentsByProfessional: async (startDate: string, endDate: string, sedeFilter?: string): Promise<ProfessionalStats[]> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const { data: profile } = await supabase
             .from('profiles')
@@ -992,7 +1002,9 @@ export const api = {
             .gte('date', startDate)
             .lte('date', endDate);
 
-        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
             query = query.in('sede', profile.sedes_permitidas);
         }
 
@@ -1014,7 +1026,57 @@ export const api = {
         return Object.values(profMap).sort((a, b) => b.count - a.count);
     },
 
-    getIncomeSummary: async (startDate: string, endDate: string): Promise<IncomeSummary[]> => {
+    getProductionByProfessionalAndSede: async (startDate: string, endDate: string, sedeFilter?: string): Promise<ProfessionalProduction[]> => {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sedes_permitidas')
+            .eq('id', authUser?.id)
+            .single();
+
+        let query = supabase
+            .from('appointments')
+            .select('status, sede, professional_id, professional:profiles(name), service:services(price)')
+            .gte('date', startDate)
+            .lte('date', endDate);
+
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+            query = query.in('sede', profile.sedes_permitidas);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const matrixMap: Record<string, ProfessionalProduction> = {};
+
+        data?.forEach((apt: any) => {
+            const profId = apt.professional_id || 'unknown';
+            const profName = apt.professional?.name || 'Sin Asignar';
+            const sede = (apt.sede || 'norte') as Sede;
+            const key = `${profId}_${sede}`;
+
+            if (!matrixMap[key]) {
+                matrixMap[key] = {
+                    professionalId: profId,
+                    professionalName: profName,
+                    sede: sede,
+                    appointmentsCount: 0,
+                    revenue: 0,
+                };
+            }
+
+            matrixMap[key].appointmentsCount++;
+            if (apt.status === 'completed' && apt.service?.price) {
+                matrixMap[key].revenue += Number(apt.service.price) || 0;
+            }
+        });
+
+        return Object.values(matrixMap).sort((a, b) => b.revenue - a.revenue || b.appointmentsCount - a.appointmentsCount);
+    },
+
+    getIncomeSummary: async (startDate: string, endDate: string, sedeFilter?: string): Promise<IncomeSummary[]> => {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const { data: profile } = await supabase
             .from('profiles')
@@ -1029,7 +1091,9 @@ export const api = {
             .lte('date', endDate)
             .eq('status', 'completed');
 
-        if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        } else if (profile?.role === 'podologo' && profile.sedes_permitidas && profile.sedes_permitidas.length > 0) {
             query = query.in('sede', profile.sedes_permitidas);
         }
 
@@ -1096,6 +1160,7 @@ export const api = {
     createSale: async (saleData: {
         patient_id?: string | null;
         appointment_id?: string | null;
+        sede?: Sede; // ← Sede en la que se registra la venta
         custom_date?: string; // ← NUEVO PARÁMETRO PARA LA FECHA DE LA CITA
         items: { product_id: string; quantity: number; unit_price: number }[];
         payment_method: PaymentMethod;
@@ -1112,6 +1177,7 @@ export const api = {
         const saleInsertData: any = {
             patient_id: saleData.patient_id || null,
             appointment_id: saleData.appointment_id || null,
+            sede: saleData.sede || 'norte',
             total,
             payment_method: saleData.payment_method,
             created_by: user.id,
@@ -1170,8 +1236,8 @@ export const api = {
         return sale;
     },
 
-    getSales: async (): Promise<SaleWithItems[]> => {
-        const { data, error } = await supabase
+    getSales: async (sedeFilter?: string): Promise<SaleWithItems[]> => {
+        let query = supabase
             .from('sales')
             .select(`
                 *,
@@ -1180,13 +1246,19 @@ export const api = {
                     *,
                     product:products(name, category)
                 )
-            `)
-            .order('created_at', { ascending: false });
+            `);
+
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
 
         if (error) throw error;
         return (data || []).map((s: any) => ({
             ...s,
             date: s.created_at,
+            sede: s.sede || 'norte',
             patient_name: s.patient?.name || 'Mostrador',
             items: (s.items || []).map((item: any) => ({
                 ...item,
@@ -1196,7 +1268,7 @@ export const api = {
         }));
     },
 
-    getSalesDashboardMetrics: async (startDate: string, endDate: string): Promise<SalesMetrics> => {
+    getSalesDashboardMetrics: async (startDate: string, endDate: string, sedeFilter?: string): Promise<SalesMetrics> => {
         // Para la comparativa, necesitamos el periodo anterior (mismo largo de tiempo)
         const currentStart = new Date(startDate);
         const currentEnd = new Date(endDate);
@@ -1206,12 +1278,19 @@ export const api = {
         const prevEnd = new Date(currentStart.getTime() - 1000).toISOString();
 
         // 1. Fetch current and previous period sales
-        // ✅ FIX: Filtrar por created_at (la tabla sales no tiene columna 'date' separada)
+        let currentQuery = supabase.from('sales').select('*, items:sale_items(*, product:products(name, category))')
+            .gte('created_at', startDate).lte('created_at', endDate);
+        let prevQuery = supabase.from('sales').select('*, items:sale_items(*, product:products(name, category))')
+            .gte('created_at', prevStart).lte('created_at', prevEnd);
+
+        if (sedeFilter && sedeFilter !== 'all') {
+            currentQuery = currentQuery.eq('sede', sedeFilter);
+            prevQuery = prevQuery.eq('sede', sedeFilter);
+        }
+
         const [{ data: salesData }, { data: prevSalesData }] = await Promise.all([
-            supabase.from('sales').select('*, items:sale_items(*, product:products(name, category))')
-                .gte('created_at', startDate).lte('created_at', endDate),
-            supabase.from('sales').select('*, items:sale_items(*, product:products(name, category))')
-                .gte('created_at', prevStart).lte('created_at', prevEnd)
+            currentQuery,
+            prevQuery
         ]);
 
         const processSales = (data: any[] | null) => {
@@ -1223,7 +1302,8 @@ export const api = {
             const recent: any[] = [];
 
             data?.forEach((sale: any) => {
-                if (sale.status === 'cancelled') return;
+                // ✅ FILTRO ESTRICTO: Solo considerar ventas completadas
+                if (sale.status !== 'completed') return;
 
                 // ✅ FIX: usar created_at como fuente de fecha canónica
                 const saleDate = (sale.created_at || '').split('T')[0];
@@ -1331,15 +1411,15 @@ export const api = {
         };
     },
 
-    getProductReportData: async (startDate: string, endDate: string): Promise<ProductReportData[]> => {
+    getProductReportData: async (startDate: string, endDate: string, sedeFilter?: string): Promise<ProductReportData[]> => {
         const { data: products, error: prodErr } = await supabase.from('products').select('*');
         if (prodErr) throw prodErr;
 
-        // ✅ FIX: Filtrar por created_at en lugar del campo 'date' inexistente
-        const { data: salesData, error: salesErr } = await supabase
+        let query = supabase
             .from('sales')
             .select(`
                 status,
+                sede,
                 items:sale_items(
                     product_id,
                     quantity,
@@ -1349,11 +1429,18 @@ export const api = {
             .gte('created_at', startDate)
             .lte('created_at', endDate);
 
+        if (sedeFilter && sedeFilter !== 'all') {
+            query = query.eq('sede', sedeFilter);
+        }
+
+        const { data: salesData, error: salesErr } = await query;
+
         if (salesErr) throw salesErr;
 
         const salesMap: Record<string, { quantity: number; revenue: number }> = {};
         salesData?.forEach((sale: any) => {
-            if (sale.status === 'cancelled') return;
+            // ✅ FILTRO ESTRICTO: Solo considerar ventas completadas
+            if (sale.status !== 'completed') return;
 
             sale.items?.forEach((item: any) => {
                 if (!salesMap[item.product_id]) {
@@ -1384,10 +1471,10 @@ export const api = {
         return data || [];
     },
 
-    getReportSummaryForExport: async (startDate: string, endDate: string) => {
-        const kpis = await api.getReportKPIs(startDate, endDate);
-        const daily = await api.getAppointmentsByDay(startDate, endDate);
-        const services = await api.getServicesRanking(startDate, endDate);
+    getReportSummaryForExport: async (startDate: string, endDate: string, sedeFilter?: string) => {
+        const kpis = await api.getReportKPIs(startDate, endDate, sedeFilter);
+        const daily = await api.getAppointmentsByDay(startDate, endDate, sedeFilter);
+        const services = await api.getServicesRanking(startDate, endDate, sedeFilter);
         return { kpis, daily, services };
     },
 

@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../lib/auth';
 import {
     BarChart3, Users, Calendar, CheckCircle2, TrendingUp,
     PieChart as PieChartIcon, User, DollarSign,
     AlertCircle, RefreshCw, Download, Pill, ShoppingBag, Package,
-    Sparkles, Clock
+    Sparkles, Clock, Tag
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -15,7 +16,7 @@ import { api } from '../lib/api';
 import {
     ReportKPIs, AppointmentsByDay, ServiceRanking,
     ProfessionalStats, IncomeSummary, Appointment,
-    SaleWithItems, ProductReportData
+    SaleWithItems, ProductReportData, ProfessionalProduction
 } from '../types';
 import { exportReportToPDF, exportToExcel } from '../lib/exportUtils';
 import { KPICard, KPICardSkeleton } from '../components/ui/KPICard';
@@ -88,16 +89,38 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Reportes() {
+    const { user } = useAuth();
     const [rangeType, setRangeType] = useState<DateRangeType>('month');
     const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
     const [activeTab, setActiveTab] = useState<TabType>('ventas');
     const [loading, setLoading] = useState(true);
 
+    // Sede filter state
+    const allowedSedes = useMemo<string[]>(() => {
+        if (user?.role === 'admin') return ['all', 'norte', 'sur'];
+        if (user?.sedes_permitidas && user.sedes_permitidas.length > 1) {
+            return ['all', ...user.sedes_permitidas];
+        }
+        if (user?.sedes_permitidas && user.sedes_permitidas.length === 1) {
+            return user.sedes_permitidas;
+        }
+        return ['all'];
+    }, [user]);
+
+    const [selectedSede, setSelectedSede] = useState<string>('all');
+
+    useEffect(() => {
+        if (user?.role === 'podologo' && user.sedes_permitidas?.length === 1) {
+            setSelectedSede(user.sedes_permitidas[0]);
+        }
+    }, [user]);
+
     const [kpis, setKpis] = useState<ReportKPIs | null>(null);
     const [appointmentsByDay, setAppointmentsByDay] = useState<AppointmentsByDay[]>([]);
     const [serviceRanking, setServiceRanking] = useState<ServiceRanking[]>([]);
     const [professionalStats, setProfessionalStats] = useState<ProfessionalStats[]>([]);
+    const [professionalProduction, setProfessionalProduction] = useState<ProfessionalProduction[]>([]);
     const [incomeSummary, setIncomeSummary] = useState<IncomeSummary[]>([]);
     const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
     const [sales, setSales] = useState<SaleWithItems[]>([]);
@@ -107,7 +130,7 @@ export default function Reportes() {
     const [salesTypeFilter, setSalesTypeFilter] = useState<string>('all');
 
     useEffect(() => { handleRangeChange(rangeType); }, [rangeType]);
-    useEffect(() => { fetchData(); }, [startDate, endDate]);
+    useEffect(() => { fetchData(); }, [startDate, endDate, selectedSede]);
 
     const handleRangeChange = (type: DateRangeType) => {
         const today = new Date();
@@ -133,16 +156,17 @@ export default function Reportes() {
             const startStr = `${startDate}T00:00:00`;
             const endStr = `${endDate}T23:59:59`;
 
-            const [kpiData, dayData, rankingData, profData, incomeData, allApts, allSales, prodStats] =
+            const [kpiData, dayData, rankingData, profData, incomeData, allApts, allSales, prodStats, prodMatrix] =
                 await Promise.all([
-                    api.getReportKPIs(startStr, endStr),
-                    api.getAppointmentsByDay(startStr, endStr),
-                    api.getServicesRanking(startStr, endStr),
-                    api.getAppointmentsByProfessional(startStr, endStr),
-                    api.getIncomeSummary(startStr, endStr),
-                    api.getAppointments(),
-                    api.getSales(),
-                    api.getProductReportData(startDate, endDate),
+                    api.getReportKPIs(startStr, endStr, selectedSede),
+                    api.getAppointmentsByDay(startStr, endStr, selectedSede),
+                    api.getServicesRanking(startStr, endStr, selectedSede),
+                    api.getAppointmentsByProfessional(startStr, endStr, selectedSede),
+                    api.getIncomeSummary(startStr, endStr, selectedSede),
+                    api.getAppointments(selectedSede),
+                    api.getSales(selectedSede),
+                    api.getProductReportData(startDate, endDate, selectedSede),
+                    api.getProductionByProfessionalAndSede(startStr, endStr, selectedSede),
                 ]);
 
             setKpis(kpiData);
@@ -150,8 +174,9 @@ export default function Reportes() {
             setServiceRanking(rankingData);
             setProfessionalStats(profData);
             setIncomeSummary(incomeData);
+            setProfessionalProduction(prodMatrix);
 
-            // ✅ CORREGIDO: Eliminé el límite de 10 para mostrar TODAS las citas del período
+            // Citas del período filtradas por sede y fecha
             const filteredApts = allApts
                 .filter(a => {
                     const d = a.date.split('T')[0];
@@ -175,71 +200,128 @@ export default function Reportes() {
 
     const handleExportPDF = async () => {
         try {
-            const data = await api.getReportSummaryForExport(startDate, endDate);
+            const data = await api.getReportSummaryForExport(startDate, endDate, selectedSede);
             exportReportToPDF(data);
         } catch { alert('Error al generar el reporte PDF'); }
     };
 
+    // ✅ FILTRO CANÓNICO: Ventas estrictamente completadas del período
+    const completedSales = useMemo(() => {
+        return sales.filter(s => s.status === 'completed');
+    }, [sales]);
+
+    // ✅ KPI TOTALES: Calculados canónicamente sobre el total real de ventas completadas
+    // Independiente de los filtros de la tabla inferior (categoría / tipo)
+    const salesTotals = useMemo(() => {
+        let general = 0;
+        let medications = 0;
+        let others = 0;
+
+        completedSales.forEach(sale => {
+            const saleTotal = Number(sale.total) || 0;
+            general += saleTotal;
+
+            // Calcular subtotal de medicamentos en la venta
+            let medsInSale = 0;
+            sale.items?.forEach(item => {
+                const category = item.category || 'General';
+                const isMed = category.toLowerCase().includes('medicamento');
+                if (isMed) {
+                    medsInSale += (Number(item.unit_price) || 0) * (Number(item.quantity) || 0);
+                }
+            });
+
+            // Si los medicamentos superan el total de la venta por descuento, acotar al total de la venta
+            const effectiveMeds = Math.min(medsInSale, saleTotal);
+            medications += effectiveMeds;
+            others += Math.max(0, saleTotal - effectiveMeds);
+        });
+
+        return { general, medications, others };
+    }, [completedSales]);
+
+    // ✅ DESGLOSE DE ÍTEMS: Para tabla y exportación, reflejando ajustes para cuadrar con sale.total
     const salesReportItems = useMemo(() => {
         let items: any[] = [];
-        sales.forEach(sale => {
-            // ✅ FILTRO: Ignorar ventas canceladas
-            if (sale.status === 'cancelled') return;
-
+        completedSales.forEach(sale => {
             const isAppointment = !!sale.appointment_id;
             const saleType = isAppointment ? 'Cita' : 'Directa';
             if (salesTypeFilter !== 'all') {
                 if (salesTypeFilter === 'appointment' && !isAppointment) return;
                 if (salesTypeFilter === 'direct' && isAppointment) return;
             }
+
+            let itemsTotal = 0;
             sale.items?.forEach(item => {
                 const category = item.category || 'General';
                 const isMedication = category.toLowerCase().includes('medicamento');
+                const lineTotal = (Number(item.unit_price) || 0) * (Number(item.quantity) || 0);
+                itemsTotal += lineTotal;
+
                 if (salesCategoryFilter !== 'all') {
                     if (salesCategoryFilter === 'medications' && !isMedication) return;
                     if (salesCategoryFilter === 'services' && isMedication) return;
                 }
+
                 items.push({
-                    id: item.id, date: sale.date, productName: item.product_name,
-                    quantity: item.quantity, category, isMedication,
-                    unitPrice: item.unit_price,
-                    total: item.unit_price * item.quantity,
-                    saleType, patientName: sale.patient_name,
+                    id: item.id,
+                    date: sale.date,
+                    sede: sale.sede || 'norte',
+                    productName: item.product_name,
+                    quantity: item.quantity,
+                    category,
+                    isMedication,
+                    unitPrice: Number(item.unit_price) || 0,
+                    total: lineTotal,
+                    saleType,
+                    patientName: sale.patient_name,
                 });
             });
-            const itemsTotal = sale.items?.reduce((s, i) => s + i.quantity * i.unit_price, 0) || 0;
-            const serviceAmount = sale.total - itemsTotal;
-            if (serviceAmount > 1 && (salesCategoryFilter === 'all' || salesCategoryFilter === 'services')) {
+
+            const saleTotal = Number(sale.total) || 0;
+            const residualAmount = saleTotal - itemsTotal;
+
+            // Si hay residual positivo: Servicio podológico de cita o cargo adicional
+            if (residualAmount > 0.009 && (salesCategoryFilter === 'all' || salesCategoryFilter === 'services')) {
                 items.push({
-                    id: `svc-${sale.id}`, date: sale.date,
-                    productName: 'Servicio Podológico (Cita)',
-                    quantity: 1, category: 'Cita', isMedication: false,
-                    unitPrice: serviceAmount, total: serviceAmount,
-                    saleType, patientName: sale.patient_name,
+                    id: `svc-${sale.id}`,
+                    date: sale.date,
+                    sede: sale.sede || 'norte',
+                    productName: isAppointment ? 'Servicio Podológico (Cita)' : 'Servicio / Cargo Adicional',
+                    quantity: 1,
+                    category: isAppointment ? 'Cita' : 'Servicio',
+                    isMedication: false,
+                    unitPrice: residualAmount,
+                    total: residualAmount,
+                    saleType,
+                    patientName: sale.patient_name,
+                });
+            } else if (residualAmount < -0.009 && (salesCategoryFilter === 'all' || salesCategoryFilter === 'services')) {
+                // Si hay residual negativo: Descuento / Ajuste global aplicado a la venta
+                items.push({
+                    id: `disc-${sale.id}`,
+                    date: sale.date,
+                    sede: sale.sede || 'norte',
+                    productName: 'Descuento / Ajuste Comercial',
+                    quantity: 1,
+                    category: 'Descuento',
+                    isMedication: false,
+                    unitPrice: residualAmount,
+                    total: residualAmount,
+                    saleType,
+                    patientName: sale.patient_name,
                 });
             }
         });
         return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [sales, salesCategoryFilter, salesTypeFilter]);
-
-    // ✅ CORREGIDO: Retorna 0 si no hay items
-    const salesTotals = useMemo(() => {
-        let general = 0, medications = 0, others = 0;
-        if (salesReportItems.length > 0) {
-            salesReportItems.forEach(item => {
-                general += item.total;
-                if (item.isMedication) medications += item.total;
-                else others += item.total;
-            });
-        }
-        return { general, medications, others };
-    }, [salesReportItems]);
+    }, [completedSales, salesCategoryFilter, salesTypeFilter]);
 
     const handleExportSalesExcel = () => {
         if (!salesReportItems.length) return alert('No hay datos para exportar');
         exportToExcel(
             salesReportItems.map(item => ({
                 'Fecha': format(parseISO(item.date), 'dd/MM/yyyy HH:mm'),
+                'Sede': (item.sede || 'norte').toUpperCase(),
                 'Producto/Servicio': item.productName,
                 'Paciente': item.patientName || 'Mostrador',
                 'Cantidad': item.quantity,
@@ -322,6 +404,29 @@ export default function Reportes() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        {/* Selector de Sede */}
+                        {allowedSedes.length > 1 ? (
+                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
+                                {allowedSedes.map(s => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setSelectedSede(s)}
+                                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all capitalize ${
+                                            selectedSede === s
+                                                ? 'bg-white text-purple-700 shadow-sm'
+                                                : 'text-white/70 hover:text-white hover:bg-white/10'
+                                        }`}
+                                    >
+                                        {s === 'all' ? 'Todas las Sedes' : `Sede ${s}`}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : allowedSedes.length === 1 && (
+                            <div className="bg-white/15 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center border border-white/20 text-white text-xs font-bold capitalize">
+                                📍 Sede {allowedSedes[0]}
+                            </div>
+                        )}
+
                         {/* Quick range buttons */}
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
                             {[
@@ -419,7 +524,7 @@ export default function Reportes() {
                             <>
                                 <KPICard
                                     title="Total General"
-                                    value={`$${(salesTotals.general || 0).toLocaleString('es-CO')}`}
+                                    value={`$${(salesTotals.general || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                     subValue="Todas las ventas y servicios"
                                     icon={DollarSign}
                                     color="violet"
@@ -428,7 +533,7 @@ export default function Reportes() {
                                 />
                                 <KPICard
                                     title="Medicamentos"
-                                    value={`$${(salesTotals.medications || 0).toLocaleString('es-CO')}`}
+                                    value={`$${(salesTotals.medications || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                     subValue="Categoría medicamento"
                                     icon={Pill}
                                     color="emerald"
@@ -436,7 +541,7 @@ export default function Reportes() {
                                 />
                                 <KPICard
                                     title="Otros Servicios"
-                                    value={`$${(salesTotals.others || 0).toLocaleString('es-CO')}`}
+                                    value={`$${(salesTotals.others || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                     subValue="Excl. medicamentos"
                                     icon={Package}
                                     color="amber"
@@ -490,6 +595,7 @@ export default function Reportes() {
                                     <thead className="bg-slate-50 text-slate-400 font-semibold text-xs uppercase tracking-wider border-b border-slate-100">
                                         <tr>
                                             <th className="px-5 py-3.5">Fecha</th>
+                                            <th className="px-5 py-3.5 text-center">Sede</th>
                                             <th className="px-5 py-3.5">Producto / Servicio</th>
                                             <th className="px-5 py-3.5 text-center">Cant.</th>
                                             <th className="px-5 py-3.5">Categoría</th>
@@ -504,16 +610,27 @@ export default function Reportes() {
                                                 <td className="px-5 py-3.5 text-slate-400 text-xs whitespace-nowrap font-medium">
                                                     {format(parseISO(item.date), 'dd/MM/yy HH:mm')}
                                                 </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                                                        item.sede === 'sur' ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'
+                                                    }`}>
+                                                        {item.sede || 'norte'}
+                                                    </span>
+                                                </td>
                                                 <td className="px-5 py-3.5">
                                                     <div className="flex items-center gap-2.5">
-                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${item.isMedication ? 'bg-emerald-100 group-hover:scale-110 transition-transform' : 'bg-slate-100 group-hover:scale-110 transition-transform'
-                                                            }`}>
-                                                            {item.isMedication
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                                            item.category === 'Descuento' ? 'bg-rose-100 group-hover:scale-110 transition-transform' :
+                                                            item.isMedication ? 'bg-emerald-100 group-hover:scale-110 transition-transform' : 'bg-slate-100 group-hover:scale-110 transition-transform'
+                                                        }`}>
+                                                            {item.category === 'Descuento'
+                                                                ? <Tag className="w-3.5 h-3.5 text-rose-600" />
+                                                                : item.isMedication
                                                                 ? <Pill className="w-3.5 h-3.5 text-emerald-600" />
                                                                 : <Package className="w-3.5 h-3.5 text-slate-500" />}
                                                         </div>
                                                         <div>
-                                                            <p className="font-semibold text-slate-800 text-xs">{item.productName}</p>
+                                                            <p className={`font-semibold text-xs ${item.total < 0 ? 'text-rose-700' : 'text-slate-800'}`}>{item.productName}</p>
                                                             {item.patientName && item.patientName !== 'Mostrador' && (
                                                                 <p className="text-[10px] text-slate-400">{item.patientName}</p>
                                                             )}
@@ -526,9 +643,12 @@ export default function Reportes() {
                                                     </span>
                                                 </td>
                                                 <td className="px-5 py-3.5">
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${item.isMedication
-                                                        ? 'bg-emerald-100 text-emerald-700'
-                                                        : 'bg-slate-100 text-slate-600'
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                        item.category === 'Descuento'
+                                                            ? 'bg-rose-100 text-rose-700'
+                                                            : item.isMedication
+                                                            ? 'bg-emerald-100 text-emerald-700'
+                                                            : 'bg-slate-100 text-slate-600'
                                                         }`}>
                                                         {item.category}
                                                     </span>
@@ -542,10 +662,10 @@ export default function Reportes() {
                                                     </span>
                                                 </td>
                                                 <td className="px-5 py-3.5 text-right text-slate-500 text-xs">
-                                                    ${item.unitPrice.toLocaleString('es-CO')}
+                                                    ${item.unitPrice.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-5 py-3.5 text-right font-black text-slate-800">
-                                                    ${item.total.toLocaleString('es-CO')}
+                                                <td className={`px-5 py-3.5 text-right font-black ${item.total < 0 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                                    ${item.total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
                                             </tr>
                                         ))}
@@ -766,6 +886,7 @@ export default function Reportes() {
                                         <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-100">
                                             <tr>
                                                 <th className="px-5 py-3.5">Paciente</th>
+                                                <th className="px-5 py-3.5 text-center">Sede</th>
                                                 <th className="px-5 py-3.5">Servicio</th>
                                                 <th className="px-5 py-3.5">Fecha</th>
                                                 <th className="px-5 py-3.5 text-right">Estado</th>
@@ -775,6 +896,13 @@ export default function Reportes() {
                                             {recentAppointments.map(apt => (
                                                 <tr key={apt.id} className="hover:bg-slate-50/80 transition-colors group">
                                                     <td className="px-5 py-3.5 font-medium text-slate-800">{apt.patientName}</td>
+                                                    <td className="px-5 py-3.5 text-center">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                                                            apt.sede === 'sur' ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'
+                                                        }`}>
+                                                            {apt.sede || 'norte'}
+                                                        </span>
+                                                    </td>
                                                     <td className="px-5 py-3.5 text-slate-500 text-xs">{apt.serviceName}</td>
                                                     <td className="px-5 py-3.5 text-slate-400 text-xs">{format(parseISO(apt.date), 'dd/MM/yy HH:mm')}</td>
                                                     <td className="px-5 py-3.5 text-right">
@@ -847,6 +975,68 @@ export default function Reportes() {
                                     <EmptyState message="No hay datos de ingresos registrados" type="ventas" />
                                 )}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Matriz: Producción por Podólogo y Sede */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Users className="w-5 h-5 text-indigo-500" />
+                                <h3 className="font-bold text-slate-800">Producción Consolidada por Podólogo y Sede</h3>
+                            </div>
+                            {professionalProduction.length > 0 && (
+                                <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                                    {professionalProduction.length} registros
+                                </span>
+                            )}
+                        </div>
+                        <div className="overflow-x-auto">
+                            {loading ? (
+                                <div className="p-5 space-y-3">
+                                    {[1, 2, 3].map(i => <div key={i} className="h-10 bg-slate-50 animate-pulse rounded-lg" />)}
+                                </div>
+                            ) : professionalProduction.length > 0 ? (
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-100">
+                                        <tr>
+                                            <th className="px-5 py-3.5">Profesional</th>
+                                            <th className="px-5 py-3.5 text-center">Sede</th>
+                                            <th className="px-5 py-3.5 text-center">Citas Atendidas</th>
+                                            <th className="px-5 py-3.5 text-right">Facturación Estimada</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {professionalProduction.map((prod, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
+                                                <td className="px-5 py-3.5 font-bold text-slate-800 flex items-center gap-2">
+                                                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                                                        {prod.professionalName.charAt(0)}
+                                                    </div>
+                                                    {prod.professionalName}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${
+                                                        prod.sede === 'sur' ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'
+                                                    }`}>
+                                                        Sede {prod.sede}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                    <span className="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs">
+                                                        {prod.appointmentsCount}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-right font-black text-emerald-600">
+                                                    ${prod.revenue.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <EmptyState message="No hay atenciones de citas registradas para este filtro" type="citas" />
+                            )}
                         </div>
                     </div>
                 </div>

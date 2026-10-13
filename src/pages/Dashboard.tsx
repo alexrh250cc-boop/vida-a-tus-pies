@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { Appointment, Patient, SalesMetrics } from '../types';
@@ -134,7 +134,27 @@ export default function Dashboard() {
     const [periodo, setPeriodo] = useState<Period>('mes');
     const [salesMetrics, setSalesMetrics] = useState<SalesMetrics | null>(null);
 
-    useEffect(() => { loadData(); }, [periodo]);
+    // Sede filter state
+    const allowedSedes = useMemo<string[]>(() => {
+        if (user?.role === 'admin') return ['all', 'norte', 'sur'];
+        if (user?.sedes_permitidas && user.sedes_permitidas.length > 1) {
+            return ['all', ...user.sedes_permitidas];
+        }
+        if (user?.sedes_permitidas && user.sedes_permitidas.length === 1) {
+            return user.sedes_permitidas;
+        }
+        return ['all'];
+    }, [user]);
+
+    const [selectedSede, setSelectedSede] = useState<string>('all');
+
+    useEffect(() => {
+        if (user?.role === 'podologo' && user.sedes_permitidas?.length === 1) {
+            setSelectedSede(user.sedes_permitidas[0]);
+        }
+    }, [user]);
+
+    useEffect(() => { loadData(); }, [periodo, selectedSede]);
 
     // LOGS PARA VER LOS DATOS DEL GRÁFICO
     useEffect(() => {
@@ -180,11 +200,11 @@ export default function Dashboard() {
                 endISO: `${endDate}T23:59:59`
             });
 
-            // Llamar a la API con las fechas correctas
+            // Llamar a la API con las fechas correctas y filtro de sede
             const [pts, apts, metrics] = await Promise.all([
                 api.getPatients(),
-                api.getAppointments(),
-                api.getSalesDashboardMetrics(`${startDate}T00:00:00`, `${endDate}T23:59:59`),
+                api.getAppointments(selectedSede),
+                api.getSalesDashboardMetrics(`${startDate}T00:00:00`, `${endDate}T23:59:59`, selectedSede),
             ]);
 
             setPatients(pts);
@@ -274,6 +294,29 @@ export default function Dashboard() {
                             Registrar Venta
                             <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                         </button>
+
+                        {/* Sede selector (si tiene acceso a múltiples sedes o admin) */}
+                        {allowedSedes.length > 1 ? (
+                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
+                                {allowedSedes.map(s => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setSelectedSede(s)}
+                                        className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all capitalize ${
+                                            selectedSede === s
+                                                ? 'bg-white text-blue-700 shadow-sm'
+                                                : 'text-white/80 hover:text-white hover:bg-white/10'
+                                        }`}
+                                    >
+                                        {s === 'all' ? 'Todas las Sedes' : `Sede ${s}`}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : allowedSedes.length === 1 && (
+                            <div className="bg-white/15 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center border border-white/20 text-white text-xs font-bold capitalize">
+                                📍 Sede {allowedSedes[0]}
+                            </div>
+                        )}
 
                         {/* Period selector */}
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">

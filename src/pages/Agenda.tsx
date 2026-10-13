@@ -268,6 +268,7 @@ export default function Agenda() {
             await api.createSale({
                 appointment_id: appointmentToPay.id,
                 patient_id: appointmentToPay.patientId,
+                sede: appointmentToPay.sede, // ← Hereda la sede de la cita
                 custom_date: appointmentToPay.date, // ← USAR LA FECHA DE LA CITA
                 items: paymentFormData.selectedProducts.map(p => ({
                     product_id: p.id,
@@ -738,11 +739,13 @@ export default function Agenda() {
                                     onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
                                 >
                                     <option value="">Seleccionar servicio</option>
-                                    {services.map(service => (
-                                        <option key={service.id} value={service.id}>
-                                            {service.name} - ${service.price} ({service.duration} min)
-                                        </option>
-                                    ))}
+                                    {services
+                                        .filter(service => !service.available_sedes || service.available_sedes.length === 0 || service.available_sedes.includes(formData.sede))
+                                        .map(service => (
+                                            <option key={service.id} value={service.id}>
+                                                {service.name} - ${service.price} ({service.duration} min)
+                                            </option>
+                                        ))}
                                 </select>
                             </div>
 
@@ -755,7 +758,16 @@ export default function Agenda() {
                                                 type="radio"
                                                 value={s}
                                                 checked={formData.sede === s}
-                                                onChange={(e) => setFormData({ ...formData, sede: e.target.value as Sede })}
+                                                onChange={(e) => {
+                                                    const newSede = e.target.value as Sede;
+                                                    const curService = services.find(srv => srv.id === formData.serviceId);
+                                                    const isStillValid = curService && (!curService.available_sedes || curService.available_sedes.length === 0 || curService.available_sedes.includes(newSede));
+                                                    setFormData({
+                                                        ...formData,
+                                                        sede: newSede,
+                                                        serviceId: isStillValid ? formData.serviceId : ''
+                                                    });
+                                                }}
                                                 className="mr-2 w-4 h-4 text-company-blue focus:ring-company-blue"
                                             />
                                             <span className="text-sm font-medium text-slate-600 group-hover:text-company-blue capitalize">{s}</span>

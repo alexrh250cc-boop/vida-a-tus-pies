@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../lib/api';
-import { Product, PaymentMethod, SaleWithItems } from '../types';
+import { Product, PaymentMethod, SaleWithItems, Sede } from '../types';
+import { useAuth } from '../lib/auth';
 import {
     Search,
     ShoppingBag,
@@ -17,7 +18,8 @@ import {
     ChevronDown,
     ChevronUp,
     XCircle,
-    Calendar
+    Calendar,
+    MapPin
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,7 +32,23 @@ type TabType = 'venta' | 'historial';
 type FilterCategory = 'all' | 'medication' | 'service';
 
 export default function Ventas() {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('venta');
+
+    // Sede permissions and selection
+    const allowedSedes = useMemo<Sede[]>(() => {
+        if (user?.role === 'admin') return ['norte', 'sur'];
+        if (user?.sedes_permitidas && user.sedes_permitidas.length > 0) return user.sedes_permitidas;
+        return ['norte'];
+    }, [user]);
+
+    const [selectedSede, setSelectedSede] = useState<Sede>('norte');
+
+    useEffect(() => {
+        if (allowedSedes.length > 0 && !allowedSedes.includes(selectedSede)) {
+            setSelectedSede(allowedSedes[0]);
+        }
+    }, [allowedSedes, selectedSede]);
 
     // Venta state
     const [products, setProducts] = useState<Product[]>([]);
@@ -46,6 +64,7 @@ export default function Ventas() {
     const [sales, setSales] = useState<SaleWithItems[]>([]);
     const [loadingSales, setLoadingSales] = useState(false);
     const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+    const [historialSedeFilter, setHistorialSedeFilter] = useState<string>('all');
 
     useEffect(() => {
         loadProducts();
@@ -53,9 +72,9 @@ export default function Ventas() {
 
     useEffect(() => {
         if (activeTab === 'historial') {
-            loadSales();
+            loadSales(historialSedeFilter);
         }
-    }, [activeTab]);
+    }, [activeTab, historialSedeFilter]);
 
     const loadProducts = async () => {
         try {
@@ -66,12 +85,10 @@ export default function Ventas() {
         }
     };
 
-    const loadSales = async () => {
+    const loadSales = async (sedeFilter?: string) => {
         setLoadingSales(true);
         try {
-            const data = await api.getSales();
-            // Filter out direct sales or all sales? 
-            // Mostrador normally has patient_name = 'Mostrador' or patient_id = null
+            const data = await api.getSales(sedeFilter);
             setSales(data);
         } catch (error) {
             console.error('Error loading sales:', error);
@@ -129,6 +146,7 @@ export default function Ventas() {
 
             await api.createSale({
                 custom_date: dateToUse,
+                sede: selectedSede, // ← Registra la venta en la sede seleccionada
                 items: cart.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity,
@@ -376,6 +394,39 @@ export default function Ventas() {
                             </div>
 
                             <div className="p-5 bg-white rounded-b-2xl border-t border-slate-100 shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)] space-y-5">
+                                {/* Sede de Venta */}
+                                <div className="space-y-2.5">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                                        Sede de Venta
+                                    </label>
+                                    {allowedSedes.length > 1 ? (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {allowedSedes.map(sede => (
+                                                <button
+                                                    key={sede}
+                                                    type="button"
+                                                    onClick={() => setSelectedSede(sede)}
+                                                    className={`py-2 px-1 rounded-lg border text-xs font-bold capitalize transition-all ${
+                                                        selectedSede === sede
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
+                                                            : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    Sede {sede}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                                            <span>Sede Asignada</span>
+                                            <span className="capitalize font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                                {selectedSede}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div className="space-y-2.5">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <Calendar className="w-3.5 h-3.5" />
@@ -442,14 +493,32 @@ export default function Ventas() {
             {/* TAB: HISTORIAL DE VENTAS */}
             {activeTab === 'historial' && (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-right-4 duration-300">
-                    <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                        <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                    <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                        <div className="flex items-center gap-2">
                             <History className="w-5 h-5 text-blue-600" />
-                            Registro de Ventas (Todas)
-                        </h2>
-                        <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border shadow-sm">
-                            Mostrando histórico completo
-                        </span>
+                            <h2 className="font-bold text-slate-800">Registro de Ventas</h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {/* Filtro por Sede */}
+                            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
+                                {(user?.role === 'admin' ? ['all', 'norte', 'sur'] : (user?.sedes_permitidas?.length && user.sedes_permitidas.length > 1 ? ['all', ...user.sedes_permitidas] : allowedSedes)).map(s => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setHistorialSedeFilter(s)}
+                                        className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${
+                                            historialSedeFilter === s
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        {s === 'all' ? 'Todas' : `Sede ${s}`}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="text-xs text-slate-500 bg-white px-2 py-1.5 rounded border shadow-sm">
+                                {sales.length} ventas
+                            </span>
+                        </div>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -469,6 +538,7 @@ export default function Ventas() {
                                     <tr>
                                         <th className="px-6 py-4 w-10"></th>
                                         <th className="px-6 py-4">Fecha y Hora</th>
+                                        <th className="px-6 py-4">Sede</th>
                                         <th className="px-6 py-4">Contexto</th>
                                         <th className="px-6 py-4">Método</th>
                                         <th className="px-6 py-4 text-right">Total</th>
@@ -491,6 +561,15 @@ export default function Ventas() {
                                                     </td>
                                                     <td className="px-6 py-4 font-medium text-slate-700 whitespace-nowrap">
                                                         {format(parseISO(sale.date), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold capitalize ${
+                                                            sale.sede === 'sur'
+                                                                ? 'bg-purple-100 text-purple-700'
+                                                                : 'bg-sky-100 text-sky-700'
+                                                        }`}>
+                                                            {sale.sede || 'norte'}
+                                                        </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-slate-600">
                                                         {sale.appointment_id ? (
