@@ -265,7 +265,7 @@ export default function Agenda() {
             }
 
             // CREAR VENTA CON appointment_id Y LA FECHA DE LA CITA
-            await api.createSale({
+            const createdSale = await api.createSale({
                 appointment_id: appointmentToPay.id,
                 patient_id: appointmentToPay.patientId,
                 sede: appointmentToPay.sede, // ← Hereda la sede de la cita
@@ -280,8 +280,23 @@ export default function Agenda() {
                 notes: finalNotes // Notas guardadas con auditoría de ajuste
             });
 
-            // ACTUALIZAR ESTADO DE LA CITA
-            await api.updateAppointment(appointmentToPay.id, { status: 'completed' });
+            // ACTUALIZAR ESTADO DE LA CITA (Con rollback compensatorio si falla)
+            try {
+                await api.updateAppointment(appointmentToPay.id, { status: 'completed' });
+            } catch (appointmentError: any) {
+                console.error('Error al actualizar cita, ejecutando rollback compensatorio de la venta:', appointmentError);
+                if (createdSale?.id) {
+                    try {
+                        await api.cancelSale(createdSale.id, 'Rollback: Fallo al actualizar cita');
+                    } catch (cancelError: any) {
+                        console.error('Error al cancelar la venta durante el rollback:', cancelError);
+                    }
+                }
+                throw new Error(
+                    `No se pudo completar la cita (${appointmentError.message || 'Error en cita'}). ` +
+                    'La venta fue revertida y el stock devuelto al inventario.'
+                );
+            }
 
             // CERRAR MODALES
             setIsPaymentModalOpen(false);
