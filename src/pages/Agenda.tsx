@@ -73,6 +73,8 @@ export default function Agenda() {
     const [slotInterval, setSlotInterval] = useState<15 | 30 | 60>(30);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [appointmentToPay, setAppointmentToPay] = useState<Appointment | null>(null);
+    const [isNotesOpen, setIsNotesOpen] = useState(false);
+    const [cashReceived, setCashReceived] = useState<number>(0);
     const [paymentFormData, setPaymentFormData] = useState({
         amount: 0,
         payment_method: 'cash' as PaymentMethod,
@@ -246,6 +248,8 @@ export default function Agenda() {
                     adjustment_reason: ''
                 });
                 setAppointmentToPay(appointment);
+                setIsNotesOpen(false);
+                setCashReceived(0);
                 setIsPaymentModalOpen(true);
             }
             return;
@@ -437,24 +441,23 @@ export default function Agenda() {
         });
     };
 
-    const getStatusText = (status: string) => {
-        switch (status) {
-            case 'scheduled': return 'Programada';
-            case 'completed': return 'Completada';
-            case 'cancelled': return 'Cancelada';
-            default: return status;
-        }
-    };
-
-    const getServiceColor = (serviceName: string | undefined) => {
-        if (!serviceName) return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200';
+    const getServiceBackground = (serviceName: string | undefined) => {
+        if (!serviceName) return 'bg-slate-50 hover:bg-slate-100/90 text-slate-800';
 
         const name = serviceName.toLowerCase();
-        if (name.includes('consulta')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200';
-        if (name.includes('uña') || name.includes('corte')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200';
-        if (name.includes('hongo') || name.includes('tratamiento')) return 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200';
-        if (name.includes('plantilla') || name.includes('orto')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200';
-        return 'bg-blue-100 border-company-blue text-blue-800 hover:bg-blue-200';
+        if (name.includes('consulta')) return 'bg-sky-50/90 hover:bg-sky-100/90 text-sky-950';
+        if (name.includes('uña') || name.includes('corte')) return 'bg-emerald-50/90 hover:bg-emerald-100/90 text-emerald-950';
+        if (name.includes('hongo') || name.includes('tratamiento')) return 'bg-amber-50/90 hover:bg-amber-100/90 text-amber-950';
+        if (name.includes('plantilla') || name.includes('orto')) return 'bg-purple-50/90 hover:bg-purple-100/90 text-purple-950';
+        return 'bg-blue-50/90 hover:bg-blue-100/90 text-blue-950';
+    };
+
+    const getStatusBorder = (status: string) => {
+        switch (status) {
+            case 'completed': return 'border-l-emerald-500';
+            case 'cancelled': return 'border-l-slate-400';
+            default: return 'border-l-amber-500'; // Programada / Falta cobrar
+        }
     };
 
     const getDaysToShow = () => {
@@ -926,8 +929,9 @@ export default function Agenda() {
                                         </div>
                                         <div className="space-y-1 overflow-y-auto max-h-[80px]">
                                             {dayAppointments.slice(0, 3).map(apt => (
-                                                <div key={apt.id} className={`text-[10px] truncate px-1 rounded border-l-2 ${getServiceColor(apt.serviceName)}`}>
-                                                    {apt.date ? format(parseISO(apt.date), 'HH:mm') : '--:--'} {apt.patientName}
+                                                <div key={apt.id} className={`text-[10px] truncate px-1 py-0.5 rounded border-l-2 ${getStatusBorder(apt.status)} ${getServiceBackground(apt.serviceName)} flex items-center justify-between gap-1`}>
+                                                    <span className="font-semibold truncate">{apt.date ? format(parseISO(apt.date), 'HH:mm') : '--:--'} {apt.patientName}</span>
+                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apt.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                                 </div>
                                             ))}
                                         </div>
@@ -1022,21 +1026,38 @@ export default function Agenda() {
                                                                     top: `${topOffset}px`,
                                                                     zIndex: 20
                                                                 }}
-                                                                className={`absolute left-1 right-1 border-l-4 rounded p-1 text-xs overflow-hidden cursor-pointer shadow-sm transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${getServiceColor(appointment.serviceName)}`}
+                                                                className={`absolute left-1 right-1 rounded-lg p-1.5 text-xs overflow-hidden cursor-pointer shadow-xs transition-all duration-200 hover:scale-[1.01] hover:shadow-md border border-slate-200/70 border-l-4 ${getStatusBorder(appointment.status)} ${getServiceBackground(appointment.serviceName)} flex flex-col justify-between`}
                                                             >
-                                                                <div className="flex justify-between items-start">
-                                                                    <p className="font-bold truncate">{appointment.patientName}</p>
-                                                                    <div className={`w-2 h-2 rounded-full ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                                <div>
+                                                                    <div className="flex justify-between items-start gap-1">
+                                                                        <p className="font-bold text-slate-900 truncate text-[11px] leading-tight">{appointment.patientName}</p>
+                                                                        <div className={`w-2 h-2 rounded-full shrink-0 mt-0.5 ${appointment.sede === 'norte' ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Sede ${appointment.sede}`} />
+                                                                    </div>
+                                                                    <p className="truncate text-slate-600 text-[10px] mt-0.5 font-medium leading-tight">{appointment.serviceName}</p>
                                                                 </div>
-                                                                <p className="truncate opacity-80 text-[10px]">{appointment.serviceName}</p>
-                                                                <div className="mt-0.5 flex items-center justify-between">
-                                                                    <span className="text-[9px] font-medium">
+
+                                                                <div className="mt-1 flex items-center justify-between gap-1 pt-0.5 border-t border-black/5">
+                                                                    <span className="text-[10px] font-semibold text-slate-600">
                                                                         {format(aptStart, 'HH:mm')} ({duration}')
                                                                     </span>
-                                                                    <span className="bg-white/50 px-1 rounded text-[9px] flex items-center gap-1">
-                                                                        {appointment.status === 'completed' && '✓'}
-                                                                        {getStatusText(appointment.status)}
-                                                                    </span>
+
+                                                                    {/* Pastilla de Alto Contraste de Estado de Pago */}
+                                                                    {appointment.status === 'completed' ? (
+                                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-600 text-white shadow-2xs tracking-wide shrink-0">
+                                                                            <span>✓</span>
+                                                                            <span>PAGADO</span>
+                                                                        </span>
+                                                                    ) : appointment.status === 'cancelled' ? (
+                                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-400 text-white shadow-2xs tracking-wide shrink-0 line-through">
+                                                                            <span>✕</span>
+                                                                            <span>CANCELADA</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500 text-white shadow-2xs tracking-wide shrink-0">
+                                                                            <span>⏳</span>
+                                                                            <span>FALTA PAGO</span>
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         );
@@ -1311,7 +1332,16 @@ export default function Agenda() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSavePayment} className="space-y-4">
+                        <form
+                            onSubmit={handleSavePayment}
+                            className="space-y-4"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey && !saving) {
+                                    e.preventDefault();
+                                    handleSavePayment(e as unknown as React.FormEvent);
+                                }
+                            }}
+                        >
                             <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-3">
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500">Servicio: <span className="font-bold text-slate-800">{appointmentToPay.serviceName}</span></span>
@@ -1330,7 +1360,7 @@ export default function Agenda() {
                                 <p className="text-sm text-slate-500 border-t border-slate-200 pt-2">Paciente: <span className="font-bold text-slate-800">{appointmentToPay.patientName}</span></p>
                             </div>
 
-                            {/* NUEVA SECCIÓN DE AJUSTES */}
+                            {/* AJUSTE MANUAL */}
                             <div className="border rounded-lg p-3 space-y-3 bg-white">
                                 <label className="block text-xs font-bold text-slate-500 uppercase">Ajuste Manual al Servicio</label>
                                 <div className="flex gap-2">
@@ -1377,6 +1407,7 @@ export default function Agenda() {
                                 )}
                             </div>
 
+                            {/* PRODUCTOS */}
                             <div className="border rounded-lg p-3 space-y-3">
                                 <label className="block text-xs font-bold text-slate-500 uppercase">Añadir Productos</label>
                                 <div className="flex gap-2">
@@ -1435,6 +1466,7 @@ export default function Agenda() {
                                 )}
                             </div>
 
+                            {/* TOTAL */}
                             <div className="pt-2">
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Monto Total a Pagar ($)</label>
                                 <div className="w-full bg-slate-900 border border-slate-200 rounded-lg p-3 text-2xl font-black text-white flex justify-between items-center">
@@ -1449,6 +1481,7 @@ export default function Agenda() {
                                 </div>
                             </div>
 
+                            {/* MÉTODO DE PAGO */}
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Método de Pago *</label>
                                 <div className="grid grid-cols-3 gap-2">
@@ -1456,35 +1489,102 @@ export default function Agenda() {
                                         <button
                                             key={method}
                                             type="button"
-                                            onClick={() => setPaymentFormData({ ...paymentFormData, payment_method: method })}
+                                            onClick={() => {
+                                                setPaymentFormData({ ...paymentFormData, payment_method: method });
+                                                if (method !== 'cash') setCashReceived(0);
+                                            }}
                                             className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all ${paymentFormData.payment_method === method
                                                 ? 'bg-company-blue border-company-blue text-white shadow-md'
                                                 : 'bg-white border-slate-200 text-slate-600 hover:border-company-blue'
                                                 }`}
                                         >
-                                            {method === 'cash' ? 'Efectivo' : method === 'transfer' ? 'Transf.' : 'Tarjeta'}
+                                            {method === 'cash' ? '💵 Efectivo' : method === 'transfer' ? '🏦 Transf.' : '💳 Tarjeta'}
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
+                            {/* CALCULADORA DE CAMBIO (solo efectivo) */}
+                            {paymentFormData.payment_method === 'cash' && (() => {
+                                const modalTotal = Math.max(0,
+                                    (Number(paymentFormData.amount) || 0) +
+                                    (paymentFormData.adjustment_type === 'extra' ? (Number(paymentFormData.adjustment_amount) || 0)
+                                        : paymentFormData.adjustment_type === 'discount' ? -(Number(paymentFormData.adjustment_amount) || 0) : 0) +
+                                    paymentFormData.selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0)
+                                );
+                                const change = cashReceived - modalTotal;
+                                return (
+                                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                                        <p className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                                            💵 Calculadora de Cambio
+                                        </p>
+                                        <div>
+                                            <label className="text-xs text-slate-500 font-medium">Efectivo Recibido ($)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={cashReceived || ''}
+                                                onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
+                                                className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-1 bg-white"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(['Exacto', 10, 20, 50, 100] as const).map((denom) => (
+                                                <button
+                                                    key={denom}
+                                                    type="button"
+                                                    onClick={() => setCashReceived(denom === 'Exacto' ? modalTotal : Number(denom))}
+                                                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                                                >
+                                                    {typeof denom === 'string' ? denom : `$${denom}`}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {cashReceived > 0 && (
+                                            <div className={`flex items-center justify-between p-2.5 rounded-lg font-bold text-sm ${change >= 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-700 border border-red-300'}`}>
+                                                <span>{change >= 0 ? '✅ Cambio a devolver:' : '⚠️ Falta:'}</span>
+                                                <span className="text-base">${Math.abs(change).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* NOTAS COLAPSABLES */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Notas (Opcional)</label>
-                                <textarea
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-company-blue"
-                                    rows={2}
-                                    placeholder="Ej: Pago parcial, descuento aplicado..."
-                                    value={paymentFormData.notes}
-                                    onChange={(e) => setPaymentFormData({ ...paymentFormData, notes: e.target.value })}
-                                />
+                                {!isNotesOpen ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsNotesOpen(true)}
+                                        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 cursor-pointer transition-colors"
+                                    >
+                                        <span className="text-base leading-none">+</span>
+                                        Añadir nota u observación
+                                    </button>
+                                ) : (
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Notas (Opcional)</label>
+                                        <textarea
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-company-blue resize-none"
+                                            rows={2}
+                                            placeholder="Ej: Pago parcial, descuento aplicado..."
+                                            value={paymentFormData.notes}
+                                            onChange={(e) => setPaymentFormData({ ...paymentFormData, notes: e.target.value })}
+                                            autoFocus
+                                        />
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="flex gap-3 pt-6 border-t font-semibold">
+                            {/* ACCIONES */}
+                            <div className="flex gap-3 pt-4 border-t font-semibold">
                                 <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors">
                                     Cancelar
                                 </button>
                                 <button type="submit" disabled={saving} className="flex-[2] py-3 bg-company-green text-white rounded-lg hover:bg-green-600 shadow-lg disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {saving ? 'Procesando...' : 'Registrar Pago y Finalizar'}
+                                    {saving ? 'Procesando...' : '✓ Registrar Pago y Finalizar'}
                                 </button>
                             </div>
                         </form>

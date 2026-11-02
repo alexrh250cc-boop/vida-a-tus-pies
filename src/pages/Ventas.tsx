@@ -19,7 +19,8 @@ import {
     ChevronUp,
     XCircle,
     Calendar,
-    MapPin
+    MapPin,
+    Banknote
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -35,7 +36,7 @@ export default function Ventas() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('venta');
 
-    // Sede permissions and selection
+    // Permisos de Sede
     const allowedSedes = useMemo<Sede[]>(() => {
         if (user?.role === 'admin') return ['norte', 'sur'];
         if (user?.sedes_permitidas && user.sedes_permitidas.length > 0) return user.sedes_permitidas;
@@ -50,17 +51,18 @@ export default function Ventas() {
         }
     }, [allowedSedes, selectedSede]);
 
-    // Venta state
+    // Estado Venta
     const [products, setProducts] = useState<Product[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+    const [cashReceived, setCashReceived] = useState<number>(0);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
-    // Historial state
+    // Estado Historial
     const [sales, setSales] = useState<SaleWithItems[]>([]);
     const [loadingSales, setLoadingSales] = useState(false);
     const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export default function Ventas() {
             const data = await api.getProducts();
             setProducts(data);
         } catch (error) {
-            console.error('Error loading products:', error);
+            console.error('Error cargando productos:', error);
         }
     };
 
@@ -91,7 +93,7 @@ export default function Ventas() {
             const data = await api.getSales(sedeFilter);
             setSales(data);
         } catch (error) {
-            console.error('Error loading sales:', error);
+            console.error('Error cargando ventas:', error);
         } finally {
             setLoadingSales(false);
         }
@@ -146,7 +148,7 @@ export default function Ventas() {
 
             await api.createSale({
                 custom_date: dateToUse,
-                sede: selectedSede, // ← Registra la venta en la sede seleccionada
+                sede: selectedSede,
                 items: cart.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity,
@@ -155,12 +157,13 @@ export default function Ventas() {
                 payment_method: paymentMethod
             });
             setCart([]);
+            setCashReceived(0);
             setCustomDate(format(new Date(), 'yyyy-MM-dd'));
             setShowSuccess(true);
             await loadProducts();
             setTimeout(() => setShowSuccess(false), 3000);
         } catch (error) {
-            console.error('Error finishing sale:', error);
+            console.error('Error procesando venta:', error);
             alert('Error al procesar la venta');
         } finally {
             setIsProcessing(false);
@@ -171,7 +174,7 @@ export default function Ventas() {
     const handleCancelSale = async (saleId: string) => {
         const reason = window.prompt('Por favor, ingresa el MOTIVO de la anulación (obligatorio):');
 
-        if (reason === null) return; // Cancelled prompt
+        if (reason === null) return;
         if (!reason.trim()) {
             alert('Debes ingresar un motivo para anular la venta.');
             return;
@@ -184,11 +187,11 @@ export default function Ventas() {
         try {
             await api.cancelSale(saleId, reason);
             alert('Venta anulada correctamente. El stock ha sido restaurado.');
-            await loadSales(); // Refrescar historial
-            await loadProducts(); // Refrescar stock en memoria
+            await loadSales();
+            await loadProducts();
         } catch (error) {
-            console.error('Error cancelling sale:', error);
-            alert('Hubo un error al anular la venta. Verifique la consola o intente nuevamente.');
+            console.error('Error anulando venta:', error);
+            alert('Hubo un error al anular la venta.');
         }
     };
 
@@ -196,7 +199,6 @@ export default function Ventas() {
         setExpandedSaleId(prev => prev === saleId ? null : saleId);
     };
 
-    // --- Filtros Catálogo ---
     const isMedication = (cat: string | null) => cat?.toLowerCase() === 'medicamento' || cat?.toLowerCase() === 'medicamentos';
 
     const filteredProducts = products.filter(p => {
@@ -211,7 +213,7 @@ export default function Ventas() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Header & Tabs */}
+            {/* Encabezado y Pestañas */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -224,20 +226,22 @@ export default function Ventas() {
                 <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
                     <button
                         onClick={() => setActiveTab('venta')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'venta'
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                            }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === 'venta'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                        }`}
                     >
                         <ShoppingCart className="w-4 h-4" />
                         Punto de Venta
                     </button>
                     <button
                         onClick={() => setActiveTab('historial')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'historial'
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                            }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === 'historial'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                        }`}
                     >
                         <History className="w-4 h-4" />
                         Historial y Devoluciones
@@ -248,7 +252,7 @@ export default function Ventas() {
             {/* TAB: PUNTO DE VENTA */}
             {activeTab === 'venta' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-left-4 duration-300">
-                    {/* Catalog */}
+                    {/* Catálogo de Productos */}
                     <div className="lg:col-span-2 space-y-6">
                         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                             <div className="relative flex-1 w-full">
@@ -296,12 +300,13 @@ export default function Ventas() {
                                         key={product.id}
                                         disabled={availableStock <= 0}
                                         onClick={() => addToCart(product)}
-                                        className={`p-4 rounded-xl border-2 text-left transition-all group ${availableStock <= 0
-                                            ? 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
-                                            : isMed
+                                        className={`p-4 rounded-xl border-2 text-left transition-all group ${
+                                            availableStock <= 0
+                                                ? 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
+                                                : isMed
                                                 ? 'bg-white border-transparent border-l-emerald-500 hover:border-emerald-300 hover:shadow-md'
                                                 : 'bg-white border-transparent border-l-blue-500 hover:border-blue-300 hover:shadow-md'
-                                            } shadow-sm`}
+                                        } shadow-sm`}
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex flex-col">
@@ -338,10 +343,10 @@ export default function Ventas() {
                         </div>
                     </div>
 
-                    {/* Cart */}
+                    {/* Carrito de Compras */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 flex flex-col h-[calc(100vh-14rem)] sticky top-8">
-                            <div className="p-6 border-b flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
+                        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 flex flex-col min-h-[calc(100vh-14rem)] sticky top-8">
+                            <div className="p-5 border-b flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
                                 <div className="flex items-center">
                                     <ShoppingCart className="w-5 h-5 text-blue-600 mr-2" />
                                     <h2 className="font-bold text-slate-800">Carrito Actual</h2>
@@ -351,15 +356,15 @@ export default function Ventas() {
                                 </span>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-72">
                                 {cart.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center space-y-2">
-                                        <ShoppingCart className="w-16 h-16 opacity-10" />
+                                    <div className="py-12 flex flex-col items-center justify-center text-slate-400 text-center space-y-2">
+                                        <ShoppingCart className="w-12 h-12 opacity-20" />
                                         <p className="text-sm">Agrega productos al carrito para comenzar</p>
                                     </div>
                                 ) : (
                                     cart.map(item => (
-                                        <div key={item.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col gap-3">
+                                        <div key={item.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col gap-2">
                                             <div className="flex justify-between items-start">
                                                 <span className="text-sm font-semibold text-slate-800 leading-tight pr-4">{item.name}</span>
                                                 <span className="text-sm font-bold text-slate-900">${(item.price * item.quantity).toLocaleString()}</span>
@@ -368,21 +373,21 @@ export default function Ventas() {
                                                 <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-sm">
                                                     <button
                                                         onClick={() => updateQuantity(item.id, -1)}
-                                                        className="p-1.5 hover:bg-slate-100 rounded-md transition-colors text-slate-600"
+                                                        className="p-1 hover:bg-slate-100 rounded-md transition-colors text-slate-600"
                                                     >
                                                         <Minus className="w-3.5 h-3.5" />
                                                     </button>
                                                     <span className="w-8 text-center text-sm font-bold text-slate-800">{item.quantity}</span>
                                                     <button
                                                         onClick={() => updateQuantity(item.id, 1)}
-                                                        className="p-1.5 hover:bg-slate-100 rounded-md transition-colors text-slate-600"
+                                                        className="p-1 hover:bg-slate-100 rounded-md transition-colors text-slate-600"
                                                     >
                                                         <Plus className="w-3.5 h-3.5" />
                                                     </button>
                                                 </div>
                                                 <button
                                                     onClick={() => confirmRemoveItem(item.id, item.name)}
-                                                    className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                                                    className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-rose-100"
                                                     title="Eliminar producto"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -393,9 +398,9 @@ export default function Ventas() {
                                 )}
                             </div>
 
-                            <div className="p-5 bg-white rounded-b-2xl border-t border-slate-100 shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)] space-y-5">
+                            <div className="p-4 bg-white rounded-b-2xl border-t border-slate-100 shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)] space-y-4">
                                 {/* Sede de Venta */}
-                                <div className="space-y-2.5">
+                                <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <MapPin className="w-3.5 h-3.5 text-blue-600" />
                                         Sede de Venta
@@ -407,7 +412,7 @@ export default function Ventas() {
                                                     key={sede}
                                                     type="button"
                                                     onClick={() => setSelectedSede(sede)}
-                                                    className={`py-2 px-1 rounded-lg border text-xs font-bold capitalize transition-all ${
+                                                    className={`py-1.5 px-1 rounded-lg border text-xs font-bold capitalize transition-all ${
                                                         selectedSede === sede
                                                             ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
                                                             : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-slate-50'
@@ -418,7 +423,7 @@ export default function Ventas() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                                        <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
                                             <span>Sede Asignada</span>
                                             <span className="capitalize font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                                                 {selectedSede}
@@ -427,7 +432,8 @@ export default function Ventas() {
                                     )}
                                 </div>
 
-                                <div className="space-y-2.5">
+                                {/* Fecha de Venta */}
+                                <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <Calendar className="w-3.5 h-3.5" />
                                         Fecha de Venta
@@ -436,52 +442,104 @@ export default function Ventas() {
                                         type="date"
                                         value={customDate}
                                         onChange={(e) => setCustomDate(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-slate-700"
+                                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-slate-700"
                                     />
                                 </div>
 
-                                <div className="space-y-2.5">
+                                {/* Método de Pago */}
+                                <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <CreditCard className="w-3.5 h-3.5" />
                                         Método de Pago
                                     </label>
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-3 gap-1.5">
                                         {(['cash', 'transfer', 'card'] as PaymentMethod[]).map(method => (
                                             <button
                                                 key={method}
-                                                onClick={() => setPaymentMethod(method)}
-                                                className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all ${paymentMethod === method
-                                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
-                                                    : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-slate-50'
-                                                    }`}
+                                                onClick={() => {
+                                                    setPaymentMethod(method);
+                                                    if (method !== 'cash') setCashReceived(0);
+                                                }}
+                                                className={`py-1.5 px-1 rounded-lg border text-xs font-bold transition-all ${
+                                                    paymentMethod === method
+                                                        ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20'
+                                                        : 'bg-white border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-slate-50'
+                                                }`}
                                             >
-                                                {method === 'cash' ? 'Efectivo' : method === 'transfer' ? 'Transf.' : 'Tarjeta'}
+                                                {method === 'cash' ? '💵 Efectivo' : method === 'transfer' ? '🏦 Transf.' : '💳 Tarjeta'}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
-                                <div className="flex justify-between items-end py-2 border-t border-slate-100 pt-3">
-                                    <span className="text-slate-500 font-medium">Total a Pagar</span>
-                                    <span className="text-3xl font-black text-slate-900 tracking-tight">${total.toLocaleString()}</span>
+                                {/* Calculadora de Cambio en Efectivo */}
+                                {paymentMethod === 'cash' && cart.length > 0 && (() => {
+                                    const change = cashReceived - total;
+                                    return (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 space-y-2 animate-in fade-in duration-200">
+                                            <div className="flex items-center justify-between text-xs font-bold text-blue-700">
+                                                <span className="flex items-center gap-1">
+                                                    <Banknote className="w-3.5 h-3.5" /> Calculadora de Cambio
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={cashReceived || ''}
+                                                    onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
+                                                    className="w-full border border-slate-300 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
+                                                    placeholder="Efectivo recibido ($)..."
+                                                />
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {(['Exacto', 10, 20, 50, 100] as const).map((denom) => (
+                                                    <button
+                                                        key={denom}
+                                                        type="button"
+                                                        onClick={() => setCashReceived(denom === 'Exacto' ? total : Number(denom))}
+                                                        className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-semibold text-slate-700 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                                                    >
+                                                        {typeof denom === 'string' ? denom : `$${denom}`}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {cashReceived > 0 && (
+                                                <div className={`flex items-center justify-between p-1.5 rounded-lg font-bold text-xs ${
+                                                    change >= 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-700 border border-red-300'
+                                                }`}>
+                                                    <span>{change >= 0 ? '✓ Cambio:' : '⚠️ Falta:'}</span>
+                                                    <span className="text-sm">${Math.abs(change).toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Total */}
+                                <div className="flex justify-between items-end py-1 border-t border-slate-100 pt-2">
+                                    <span className="text-slate-500 font-medium text-sm">Total a Pagar</span>
+                                    <span className="text-2xl font-black text-slate-900 tracking-tight">${total.toLocaleString()}</span>
                                 </div>
 
                                 {showSuccess ? (
-                                    <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl flex items-center justify-center font-bold border border-emerald-100 animate-in zoom-in duration-300">
+                                    <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl flex items-center justify-center font-bold border border-emerald-100 animate-in zoom-in duration-300 text-sm">
                                         <CheckCircle2 className="w-5 h-5 mr-2" />
-                                        ¡Venta Procesada!
+                                        ¡Venta Procesada con Éxito!
                                     </div>
                                 ) : (
                                     <button
                                         disabled={cart.length === 0 || isProcessing}
                                         onClick={handleFinishSale}
-                                        className={`w-full py-4 rounded-xl flex items-center justify-center font-bold text-base transition-all ${cart.length === 0 || isProcessing
-                                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                            : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/25 active:scale-[0.98]'
-                                            }`}
+                                        className={`w-full py-3 rounded-xl flex items-center justify-center font-bold text-sm transition-all ${
+                                            cart.length === 0 || isProcessing
+                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/25 active:scale-[0.98]'
+                                        }`}
                                     >
-                                        <CreditCard className="w-5 h-5 mr-2" />
-                                        {isProcessing ? 'Procesando...' : 'Cobrar e Imprimir'}
+                                        <CreditCard className="w-4 h-4 mr-2" />
+                                        {isProcessing ? 'Procesando...' : 'Cobrar e Registrar Venta'}
                                     </button>
                                 )}
                             </div>
@@ -499,7 +557,6 @@ export default function Ventas() {
                             <h2 className="font-bold text-slate-800">Registro de Ventas</h2>
                         </div>
                         <div className="flex items-center gap-2">
-                            {/* Filtro por Sede */}
                             <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
                                 {(user?.role === 'admin' ? ['all', 'norte', 'sur'] : (user?.sedes_permitidas?.length && user.sedes_permitidas.length > 1 ? ['all', ...user.sedes_permitidas] : allowedSedes)).map(s => (
                                     <button
@@ -617,10 +674,10 @@ export default function Ventas() {
                                                         )}
                                                     </td>
                                                 </tr>
-                                                {/* Expanded Details Row */}
+                                                {/* Fila desplegable de productos */}
                                                 {isExpanded && (
                                                     <tr>
-                                                        <td colSpan={7} className="px-0 py-0 border-b-0">
+                                                        <td colSpan={8} className="px-0 py-0 border-b-0">
                                                             <div className="bg-slate-50 border-y border-slate-200 px-12 py-6 shadow-inner">
                                                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center">
                                                                     <ShoppingCart className="w-3.5 h-3.5 mr-2" />
