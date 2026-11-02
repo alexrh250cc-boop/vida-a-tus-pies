@@ -72,7 +72,7 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
     return (
         <div className="bg-white border border-slate-100 rounded-xl shadow-xl p-3 text-sm min-w-[180px] animate-in fade-in duration-200">
             <p className="font-semibold text-slate-500 mb-2 border-b border-slate-100 pb-1">
-                {label?.split('-').reverse().join('/')}
+                {label ? String(label).split('-').reverse().join('/') : ''}
             </p>
             {payload.map((p: any) => (
                 <div key={p.name} className="flex items-center justify-between gap-4 mb-1">
@@ -81,7 +81,7 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
                         <span className="text-slate-600">{p.name}:</span>
                     </div>
                     <span className="font-bold text-slate-800">
-                        ${p.value?.toLocaleString('es-CO')}
+                        ${(p.value || 0).toLocaleString('es-CO')}
                     </span>
                 </div>
             ))}
@@ -115,7 +115,6 @@ const avatarColors = [
 ];
 const getAvatarColor = (name: string) => avatarColors[name.length % avatarColors.length];
 
-// ── Activity feed item type ───────────────────────────────────────────────────
 type FeedItem = {
     id: string;
     type: 'cita' | 'med' | 'prod';
@@ -134,7 +133,6 @@ export default function Dashboard() {
     const [periodo, setPeriodo] = useState<Period>('mes');
     const [salesMetrics, setSalesMetrics] = useState<SalesMetrics | null>(null);
 
-    // Sede filter state
     const allowedSedes = useMemo<string[]>(() => {
         if (user?.role === 'admin') return ['all', 'norte', 'sur'];
         if (user?.sedes_permitidas && user.sedes_permitidas.length > 1) {
@@ -156,29 +154,12 @@ export default function Dashboard() {
 
     useEffect(() => { loadData(); }, [periodo, selectedSede]);
 
-    // LOGS PARA VER LOS DATOS DEL GRÁFICO
-    useEffect(() => {
-        if (salesMetrics?.revenueByDay) {
-            console.log('📊 ========== DATOS DEL GRÁFICO ==========');
-            console.log('📊 revenueByDay completo:', salesMetrics.revenueByDay);
-            console.log('📊 Cantidad de días:', salesMetrics.revenueByDay.length);
-            console.log('📊 Primer elemento:', salesMetrics.revenueByDay[0]);
-            console.log('📊 Keys del objeto:', Object.keys(salesMetrics.revenueByDay[0]));
-            console.log('📊 JSON:', JSON.stringify(salesMetrics.revenueByDay, null, 2));
-            console.log('📊 =====================================');
-        } else {
-            console.log('📊 No hay datos de revenueByDay');
-        }
-    }, [salesMetrics]);
-
     const loadData = async () => {
         setLoading(true);
-        console.log('🔍 Cargando datos para período:', periodo);
         try {
             const today = new Date();
             let startDate = '', endDate = '';
 
-            // Calcular fechas según período seleccionado
             if (periodo === 'hoy') {
                 startDate = format(today, 'yyyy-MM-dd');
                 endDate = format(today, 'yyyy-MM-dd');
@@ -188,31 +169,20 @@ export default function Dashboard() {
             } else if (periodo === 'mes') {
                 startDate = format(startOfMonth(today), 'yyyy-MM-dd');
                 endDate = format(endOfMonth(today), 'yyyy-MM-dd');
-            } else { // año
+            } else {
                 startDate = format(startOfYear(today), 'yyyy-MM-dd');
                 endDate = format(endOfYear(today), 'yyyy-MM-dd');
             }
 
-            console.log('📅 Fechas seleccionadas:', {
-                startDate,
-                endDate,
-                startISO: `${startDate}T00:00:00`,
-                endISO: `${endDate}T23:59:59`
-            });
-
-            // Llamar a la API con las fechas correctas y filtro de sede
             const [pts, apts, metrics] = await Promise.all([
                 api.getPatients(),
                 api.getAppointments(selectedSede),
                 api.getSalesDashboardMetrics(`${startDate}T00:00:00`, `${endDate}T23:59:59`, selectedSede),
             ]);
 
-            setPatients(pts);
-            setAppointments(apts);
-            setSalesMetrics(metrics);
-
-            console.log('📊 metrics recibido:', metrics);
-            console.log('📈 revenueByDay:', metrics?.revenueByDay);
+            setPatients(pts || []);
+            setAppointments(apts || []);
+            setSalesMetrics(metrics || null);
 
         } catch (error) {
             console.error('❌ Error loading dashboard data', error);
@@ -222,19 +192,18 @@ export default function Dashboard() {
     };
 
     const today = new Date().toISOString().split('T')[0];
-    const todayAppointments = appointments.filter(a => a.date.startsWith(today));
+    const todayAppointments = (appointments || []).filter(a => a?.date && a.date.startsWith(today));
     const completedToday = todayAppointments.filter(a => a.status === 'completed').length;
 
-    // Build activity feed from recentProducts
     const feedItems: FeedItem[] = (salesMetrics?.recentProducts || [])
-        .filter((p): p is typeof p & { type: 'cita' | 'med' | 'prod' } => p.type === 'cita' || p.type === 'med' || p.type === 'prod')
+        .filter((p): p is typeof p & { type: 'cita' | 'med' | 'prod' } => p?.type === 'cita' || p?.type === 'med' || p?.type === 'prod')
         .map((p, i) => ({
-            id: `${i}-${p.name}`,
+            id: `${i}-${p.name || 'item'}`,
             type: p.type,
-            name: p.name,
+            name: p.name || 'Sin nombre',
             detail: p.type === 'cita' ? 'Servicio podológico' : p.type === 'med' ? 'Medicamento' : 'Producto',
-            amount: p.price * p.quantity,
-            date: p.date,
+            amount: (p.price || 0) * (p.quantity || 0),
+            date: p.date || new Date().toISOString(),
         }));
 
     const totalRevenue =
@@ -249,7 +218,6 @@ export default function Dashboard() {
 
     const deltaLabel = PERIOD_LABEL[periodo];
 
-    // Pie chart center label (total)
     const CustomPieLabel = ({ viewBox }: any) => {
         const { cx, cy } = viewBox;
         return (
@@ -262,12 +230,16 @@ export default function Dashboard() {
         );
     };
 
+    // Validar si hay datos reales en revenueByDay
+    const hasRevenueData = Array.isArray(salesMetrics?.revenueByDay) && 
+        salesMetrics.revenueByDay.length > 0 && 
+        salesMetrics.revenueByDay.some(d => (d.citas > 0 || d.medications > 0 || d.otros > 0));
+
     return (
         <div className="space-y-6 pb-8 animate-in fade-in duration-500">
 
             {/* ── HEADER ─────────────────────────────────────────────────────── */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-violet-700 p-6 shadow-lg">
-                {/* decorative circles */}
                 <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/5" />
                 <div className="absolute -bottom-6 -left-4 w-28 h-28 rounded-full bg-white/5" />
                 <div className="absolute top-1/2 left-1/3 w-20 h-20 rounded-full bg-white/5 animate-pulse" style={{ animationDuration: '3s' }} />
@@ -278,14 +250,13 @@ export default function Dashboard() {
                             {format(new Date(), "EEEE, dd 'de' MMMM yyyy", { locale: es }).replace(/^\w/, c => c.toUpperCase())}
                         </p>
                         <h1 className="text-3xl font-black text-white flex items-center gap-2">
-                            ¡Hola, {user?.name?.split(' ')[0]}!
+                            ¡Hola, {user?.name?.split(' ')[0] || 'Usuario'}!
                             <Sparkles className="w-6 h-6 text-yellow-300 animate-pulse" />
                         </h1>
                         <p className="text-blue-200 text-sm mt-1">Resumen de rendimiento unificado</p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                        {/* Botón Registrar Venta — prominente */}
                         <button
                             onClick={() => navigate('/ventas')}
                             className="flex items-center gap-2 bg-white text-blue-700 font-bold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 text-sm group"
@@ -295,7 +266,6 @@ export default function Dashboard() {
                             <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                         </button>
 
-                        {/* Sede selector (si tiene acceso a múltiples sedes o admin) */}
                         {allowedSedes.length > 1 ? (
                             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
                                 {allowedSedes.map(s => (
@@ -318,7 +288,6 @@ export default function Dashboard() {
                             </div>
                         )}
 
-                        {/* Period selector */}
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex border border-white/20">
                             {(['hoy', 'semana', 'mes', 'año'] as Period[]).map(p => (
                                 <button
@@ -337,7 +306,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* ── KPI CARDS — Orden: Citas | Medicamentos | Otros | Total ─────── */}
+            {/* ── KPI CARDS ──────────────────────────────────────────────────── */}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 {loading ? (
                     <><KPICardSkeleton /><KPICardSkeleton /><KPICardSkeleton /><KPICardSkeleton /></>
@@ -394,8 +363,8 @@ export default function Dashboard() {
             {/* ── CHARTS ROW ─────────────────────────────────────────────────── */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-                {/* Evolución: BARRAS MEJORADAS - MÁS GRANDES Y VISUALES */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
+                {/* Evolución: BARRAS */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2 flex flex-col justify-between">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-md">
@@ -406,7 +375,7 @@ export default function Dashboard() {
                                     Ingresos del Período
                                 </h2>
                                 <p className="text-xs text-slate-400">
-                                    {salesMetrics?.revenueByDay?.length || 0} días con actividad
+                                    {salesMetrics?.revenueByDay?.length || 0} días en el intervalo
                                 </p>
                             </div>
                         </div>
@@ -425,99 +394,91 @@ export default function Dashboard() {
                             </span>
                         </div>
                     </div>
-                    <div style={{ height: '400px', width: '100%' }}>
+                    <div style={{ height: '360px', width: '100%' }} className="flex items-center justify-center">
                         {loading ? (
-                            <div className="h-full rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 animate-pulse" />
+                            <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 animate-pulse" />
+                        ) : hasRevenueData ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    data={salesMetrics?.revenueByDay || []}
+                                    margin={{ top: 20, right: 20, left: 10, bottom: 10 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis
+                                        dataKey="date"
+                                        axisLine={false} tickLine={false}
+                                        tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }}
+                                        tickFormatter={val => {
+                                            if (!val) return '';
+                                            const parts = String(val).split('-');
+                                            if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+                                            return val;
+                                        }}
+                                    />
+                                    <YAxis
+                                        axisLine={false} tickLine={false}
+                                        tick={{ fontSize: 12, fill: '#64748b' }}
+                                        width={60}
+                                        tickFormatter={val => `$${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}`}
+                                    />
+                                    <Tooltip
+                                        content={<CustomBarTooltip />}
+                                        cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
+                                    />
+                                    <Bar
+                                        dataKey="citas"
+                                        name="Citas"
+                                        fill="#3b82f6"
+                                        radius={[6, 6, 0, 0]}
+                                        barSize={40}
+                                    />
+                                    <Bar
+                                        dataKey="medications"
+                                        name="Medicamentos"
+                                        fill="#10b981"
+                                        radius={[6, 6, 0, 0]}
+                                        barSize={40}
+                                    />
+                                    <Bar
+                                        dataKey="otros"
+                                        name="Otros"
+                                        fill="#f59e0b"
+                                        radius={[6, 6, 0, 0]}
+                                        barSize={40}
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
                         ) : (
-                            <>
-                                {salesMetrics?.revenueByDay && Array.isArray(salesMetrics.revenueByDay) && salesMetrics.revenueByDay.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart
-                                            data={salesMetrics.revenueByDay}
-                                            margin={{ top: 30, right: 30, left: 20, bottom: 20 }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                            <XAxis
-                                                dataKey="date"
-                                                axisLine={false} tickLine={false}
-                                                tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }}
-                                                tickFormatter={val => {
-                                                    const [_, month, day] = val.split('-');
-                                                    return `${day}/${month}`;
-                                                }}
-                                            />
-                                            <YAxis
-                                                axisLine={false} tickLine={false}
-                                                tick={{ fontSize: 12, fill: '#64748b' }}
-                                                width={70}
-                                                tickFormatter={val => `$${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}`}
-                                            />
-                                            <Tooltip
-                                                content={<CustomBarTooltip />}
-                                                cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
-                                            />
-                                            <Bar
-                                                dataKey="citas"
-                                                name="Citas"
-                                                fill="#3b82f6"
-                                                radius={[8, 8, 0, 0]}
-                                                barSize={60}
-                                                animationDuration={1000}
-                                                animationEasing="ease-in-out"
-                                            />
-                                            <Bar
-                                                dataKey="medications"
-                                                name="Medicamentos"
-                                                fill="#10b981"
-                                                radius={[8, 8, 0, 0]}
-                                                barSize={60}
-                                                animationDuration={1000}
-                                                animationEasing="ease-in-out"
-                                            />
-                                            <Bar
-                                                dataKey="otros"
-                                                name="Otros"
-                                                fill="#f59e0b"
-                                                radius={[8, 8, 0, 0]}
-                                                barSize={60}
-                                                animationDuration={1000}
-                                                animationEasing="ease-in-out"
-                                            />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                ) : (
-                                    <div className="h-full flex flex-col items-center justify-center text-center">
-                                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center mb-4 shadow-inner">
-                                            <BarChart2 className="w-10 h-10 text-slate-400" />
-                                        </div>
-                                        <p className="text-base text-slate-400 font-medium max-w-[240px]">
-                                            {getRandomMessage('grafico')}
-                                        </p>
-                                    </div>
-                                )}
-                            </>
+                            <div className="flex flex-col items-center justify-center text-center py-12">
+                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center mb-3 shadow-inner">
+                                    <BarChart2 className="w-8 h-8 text-slate-400" />
+                                </div>
+                                <p className="text-sm text-slate-400 font-medium max-w-[240px]">
+                                    {getRandomMessage('grafico')}
+                                </p>
+                            </div>
                         )}
                     </div>
                 </div>
 
                 {/* Pie: Ventas por Categoría */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-between">
                     <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shadow-md">
                             <PieChartIcon className="w-4 h-4 text-white" />
                         </div>
                         Por Categoría
                     </h2>
-                    <div className="h-80">
+                    <div className="h-80 flex items-center justify-center">
                         {loading ? (
-                            <div className="h-full rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 animate-pulse" />
-                        ) : salesMetrics?.revenueByCategory?.length ? (
+                            <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 animate-pulse" />
+                        ) : salesMetrics?.revenueByCategory && salesMetrics.revenueByCategory.length > 0 && totalRevenue > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
                                         data={salesMetrics.revenueByCategory}
                                         cx="50%" cy="45%"
-                                        innerRadius={60} outerRadius={90}
+                                        innerRadius={55} outerRadius={85}
                                         paddingAngle={4}
                                         dataKey="total" nameKey="category"
                                         labelLine={false}
@@ -528,7 +489,7 @@ export default function Dashboard() {
                                         <Label content={<CustomPieLabel />} position="center" />
                                     </Pie>
                                     <Tooltip
-                                        formatter={(v: number) => `$${v.toLocaleString('es-CO')}`}
+                                        formatter={(v: number) => `$${(v || 0).toLocaleString('es-CO')}`}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 30px rgb(0 0 0 / 0.12)' }}
                                     />
                                     <Legend
@@ -536,7 +497,7 @@ export default function Dashboard() {
                                         height={36}
                                         iconType="circle"
                                         iconSize={10}
-                                        wrapperStyle={{ paddingTop: '20px' }}
+                                        wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -608,20 +569,32 @@ export default function Dashboard() {
                                         icon: Package,
                                         badge: 'bg-amber-50 text-amber-700'
                                     },
-                                }[item.type];
+                                }[item.type] || {
+                                    bg: 'bg-slate-100',
+                                    text: 'text-slate-600',
+                                    icon: Package,
+                                    badge: 'bg-slate-50 text-slate-700'
+                                };
                                 const IconComp = typeConfig.icon;
+                                
+                                let formattedDate = '';
+                                try {
+                                    formattedDate = format(new Date(item.date), 'dd MMM, HH:mm', { locale: es });
+                                } catch {
+                                    formattedDate = 'Fecha rec.';
+                                }
+
                                 return (
                                     <li
                                         key={item.id}
-                                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors animate-fade-up group"
-                                        style={{ animationDelay: `${idx * 60}ms` }}
+                                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors group"
                                     >
                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${typeConfig.bg} group-hover:scale-110 transition-transform`}>
                                             <IconComp className={`w-5 h-5 ${typeConfig.text}`} />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-semibold text-slate-800 truncate">{item.name}</p>
-                                            <p className="text-xs text-slate-400">{item.detail} · {format(new Date(item.date), 'dd MMM, HH:mm')}</p>
+                                            <p className="text-xs text-slate-400">{item.detail} · {formattedDate}</p>
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${typeConfig.badge}`}>
@@ -711,6 +684,13 @@ export default function Dashboard() {
                         <ul className="divide-y divide-slate-50 mt-2">
                             {todayAppointments.slice(0, 6).map(apt => {
                                 const s = statusMap[apt.status] ?? { label: apt.status, cls: 'bg-slate-100 text-slate-600' };
+                                let aptTime = '--:--';
+                                try {
+                                    aptTime = new Date(apt.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                } catch { /* fallback */ }
+
+                                const patientObj = patients.find(p => p.id === apt.patientId);
+
                                 return (
                                     <li
                                         key={apt.id}
@@ -719,20 +699,20 @@ export default function Dashboard() {
                                     >
                                         <div className="flex justify-between items-center gap-3">
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${getAvatarColor(apt.patientName)} group-hover:scale-110 transition-transform`}>
-                                                    {apt.patientName.substring(0, 2).toUpperCase()}
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${getAvatarColor(apt.patientName || 'P')} group-hover:scale-110 transition-transform`}>
+                                                    {(apt.patientName || 'PA').substring(0, 2).toUpperCase()}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-sm font-semibold text-slate-800 truncate">{apt.patientName}</p>
+                                                    <p className="text-sm font-semibold text-slate-800 truncate">{apt.patientName || 'Sin nombre'}</p>
                                                     <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                                                         <Phone className="w-3 h-3 shrink-0" />
-                                                        {patients.find(p => p.id === apt.patientId)?.phone || 'N/A'}
+                                                        {patientObj?.phone || 'N/A'}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-right shrink-0">
                                                 <p className="text-sm font-bold text-slate-700">
-                                                    {new Date(apt.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {aptTime}
                                                 </p>
                                                 <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${s.cls}`}>
                                                     {s.label}

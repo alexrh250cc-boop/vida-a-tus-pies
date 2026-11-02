@@ -17,30 +17,24 @@ export default function Login() {
         setError(null);
 
         try {
-            const { data, error: signInError } = await supabase.auth.signInWithPassword({
+            const { error: signInError } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password: password.trim(),
             });
 
-            console.log("LOGIN DATA:", data);
-            console.log("LOGIN ERROR:", signInError);
-
             if (signInError) {
-                throw signInError; // ✅ CORREGIDO: Usamos signInError aquí
+                throw signInError;
             }
 
-            // Si llegamos aquí, el login fue exitoso
-            console.log("Login exitoso, redirigiendo...");
             navigate('/');
 
         } catch (err: any) {
-            console.error("Error completo:", err);
+            console.error("Error en login:", err);
 
-            // Manejo específico de errores de Supabase
             if (err.message?.includes("Email logins are disabled")) {
-                setError('El inicio de sesión con email está desactivado. Habilítalo en Supabase (Authentication → Providers → Email)');
+                setError('El inicio de sesión con email está desactivado en Supabase.');
             } else {
-                setError(err.message || 'Error al iniciar sesión');
+                setError(err.message || 'Credenciales incorrectas o error al iniciar sesión');
             }
         } finally {
             setLoading(false);
@@ -74,6 +68,7 @@ export default function Login() {
                                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-4 focus:ring-company-green/20 focus:border-company-green outline-none transition-all duration-200"
                                 placeholder="correo@ejemplo.com"
                                 required
+                                autoFocus
                             />
                         </div>
                     </div>
@@ -98,13 +93,11 @@ export default function Login() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-company-green text-white py-2 px-4 rounded-lg hover:bg-company-green/90 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        className="w-full bg-company-green text-white py-2 px-4 rounded-lg hover:bg-company-green/90 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm"
                     >
                         {loading ? 'Iniciando sesión...' : 'Ingresar al Sistema'}
                     </button>
                 </form>
-
-
             </div>
         </div>
     );
