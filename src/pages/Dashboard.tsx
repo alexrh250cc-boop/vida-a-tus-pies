@@ -549,7 +549,8 @@ export default function Dashboard() {
                         </div>
                     ) : feedItems.length > 0 ? (
                         <ul className="space-y-3">
-                            {feedItems.slice(0, 6).map((item, idx) => {
+                            {/* CORRECCIÓN AQUÍ: Se eliminó el 'idx' no utilizado */}
+                            {feedItems.slice(0, 6).map((item) => {
                                 const typeConfig = {
                                     cita: {
                                         bg: 'bg-blue-100',
