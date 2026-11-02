@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import {
@@ -35,11 +35,6 @@ export default function Agenda() {
     const [isIntervalMenuOpen, setIsIntervalMenuOpen] = useState(false);
     const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
     const [isNavigating, setIsNavigating] = useState(false);
-
-    useEffect(() => {
-        const timer = setInterval(() => {}, 60000);
-        return () => clearInterval(timer);
-    }, []);
 
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -379,11 +374,14 @@ export default function Agenda() {
         setTimeout(() => setIsNavigating(false), 150);
     };
 
-    const filteredAppointments = appointments.filter(apt => {
-        const matchSede = (selectedSede === 'all' || apt.sede === selectedSede);
-        const matchProf = (selectedProfessional === 'all' || apt.professionalId === selectedProfessional);
-        return matchSede && matchProf;
-    });
+    // MEJORA: Uso de useMemo para evitar recalcular en cada renderizado
+    const filteredAppointments = useMemo(() => {
+        return appointments.filter(apt => {
+            const matchSede = (selectedSede === 'all' || apt.sede === selectedSede);
+            const matchProf = (selectedProfessional === 'all' || apt.professionalId === selectedProfessional);
+            return matchSede && matchProf;
+        });
+    }, [appointments, selectedSede, selectedProfessional]);
 
     const getAppointmentsForSlot = (day: Date, hour: Date) => {
         if (!day || !hour) return [];
@@ -772,7 +770,8 @@ export default function Agenda() {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <input type="date" required className="bg-slate-50 border p-2 rounded-lg" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
-                                <input type="text" required className="bg-slate-50 border p-2 rounded-lg" placeholder="10:00" value={formData.time} onChange={(e) => setFormData({ ...formData, time: e.target.value })} />
+                                {/* MEJORA: type="time" en lugar de "text" */}
+                                <input type="time" required className="bg-slate-50 border p-2 rounded-lg" value={formData.time} onChange={(e) => setFormData({ ...formData, time: e.target.value })} />
                             </div>
                             <div className="flex justify-end gap-3 pt-4 border-t">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500">Cancelar</button>
@@ -839,7 +838,8 @@ export default function Agenda() {
                                             selectedAppointment.status === 'completed' ? 'bg-green-600 text-white shadow-md' : 'bg-green-50 text-green-600 hover:bg-green-100'
                                         }`}
                                     >
-                                        {selectedAppointment.status === 'completed' ? 'Atendida ✓' : 'Completar'}
+                                        {/* MEJORA: Texto unificado a "Completada" */}
+                                        {selectedAppointment.status === 'completed' ? 'Completada ✓' : 'Completar'}
                                     </button>
                                     <button
                                         onClick={() => handleChangeStatus(selectedAppointment?.id || '', 'cancelled')}
