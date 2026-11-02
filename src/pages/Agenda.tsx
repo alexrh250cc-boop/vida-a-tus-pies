@@ -9,6 +9,8 @@ import {
     endOfMonth,
     eachDayOfInterval,
     addDays,
+    addMonths,
+    subMonths,
     startOfDay,
     parseISO,
     isValid,
@@ -20,7 +22,8 @@ import { api } from '../lib/api';
 import { Appointment, Sede, Patient, Service, PaymentMethod, Product } from '../types';
 import {
     ChevronLeft, ChevronRight, Plus, X, Calendar, Clock,
-    Edit, Trash2, User, FileText, Search
+    Edit, Trash2, User, FileText, Search, Settings2,
+    CalendarDays, MoreHorizontal, Check
 } from 'lucide-react';
 
 export default function Agenda() {
@@ -29,6 +32,20 @@ export default function Agenda() {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<'day' | 'week' | 'month'>('week');
     const [selectedSede, setSelectedSede] = useState<Sede | 'all'>('all');
+    const [selectedProfessional, setSelectedProfessional] = useState<string>('all');
+    const [availableProfessionals, setAvailableProfessionals] = useState<{ id: string; name: string }[]>([]);
+    const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
+    const [isMiniCalendarOpen, setIsMiniCalendarOpen] = useState(false);
+    const [miniCalendarDate, setMiniCalendarDate] = useState(new Date());
+    const [isIntervalMenuOpen, setIsIntervalMenuOpen] = useState(false);
+    const [nowTime, setNowTime] = useState(new Date());
+    const [isNavigating, setIsNavigating] = useState(false);
+
+    // Reloj en tiempo real para la línea de hora actual (cada 60 segundos)
+    useEffect(() => {
+        const timer = setInterval(() => setNowTime(new Date()), 60000);
+        return () => clearInterval(timer);
+    }, []);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,6 +135,18 @@ export default function Agenda() {
             setPatients(patientsData);
             setServices(servicesData);
             setProducts(productsData);
+
+            // Extraer lista de profesionales únicos para el filtro cruzado
+            const profMap = new Map<string, string>();
+            appointmentsData.forEach(apt => {
+                if (apt.professionalId && apt.professionalName) {
+                    profMap.set(apt.professionalId, apt.professionalName);
+                }
+            });
+            if (user?.id && user?.name) {
+                profMap.set(user.id, user.name);
+            }
+            setAvailableProfessionals(Array.from(profMap.entries()).map(([id, name]) => ({ id, name })));
         } catch (error) {
             console.error('Error cargando datos:', error);
         } finally {
@@ -364,9 +393,17 @@ export default function Agenda() {
 
     const hours = getHours();
 
-    const filteredAppointments = appointments.filter(apt =>
-        (selectedSede === 'all' || apt.sede === selectedSede)
-    );
+    const handleNavigateDate = (newDate: Date) => {
+        setIsNavigating(true);
+        setCurrentDate(newDate);
+        setTimeout(() => setIsNavigating(false), 150);
+    };
+
+    const filteredAppointments = appointments.filter(apt => {
+        const matchSede = (selectedSede === 'all' || apt.sede === selectedSede);
+        const matchProf = (selectedProfessional === 'all' || apt.professionalId === selectedProfessional);
+        return matchSede && matchProf;
+    });
 
     const getAppointmentsForSlot = (day: Date, hour: Date) => {
         if (!day || !hour) return [];
@@ -437,66 +474,370 @@ export default function Agenda() {
         <div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
             {loading && <div className="text-center py-4 text-slate-500">Cargando agenda...</div>}
 
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Agenda</h1>
-                    <p className="text-slate-500 text-sm">Gestiona las citas de las sedes</p>
-                </div>
+            {/* Backdrop para cerrar menús flotantes al hacer click fuera */}
+            {(isMiniCalendarOpen || isIntervalMenuOpen || isOverflowMenuOpen) && (
+                <div
+                    className="fixed inset-0 z-40 bg-black/10 transition-opacity"
+                    onClick={() => {
+                        setIsMiniCalendarOpen(false);
+                        setIsIntervalMenuOpen(false);
+                        setIsOverflowMenuOpen(false);
+                    }}
+                />
+            )}
 
-                <div className="flex bg-slate-100 p-1 rounded-lg">
-                    {(['day', 'week', 'month'] as const).map((viewOption) => (
+            {/* BARRA UNIFICADA DE CONTROL (Estilo Google Calendar / consultorio.me) */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs px-3.5 py-2.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-3 relative z-40">
+                {/* LADO IZQUIERDO: Título, Botón Hoy, Flechas y Fecha */}
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 text-company-blue flex items-center justify-center font-bold">
+                            <Calendar className="w-4 h-4 text-company-blue" />
+                        </div>
+                        <h1 className="text-lg font-bold text-slate-800 tracking-tight">Agenda</h1>
+                    </div>
+
+                    <div className="h-5 w-px bg-slate-200 hidden sm:block" />
+
+                    <div className="flex items-center gap-1.5">
                         <button
-                            key={viewOption}
-                            onClick={() => setView(viewOption)}
-                            className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${view === viewOption ? 'bg-white shadow text-company-blue' : 'text-slate-500 hover:text-slate-700'}`}
+                            type="button"
+                            onClick={() => handleNavigateDate(new Date())}
+                            className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-lg transition-all"
+                            title="Ir al día de hoy"
                         >
-                            {viewOption === 'day' ? 'Día' : viewOption === 'week' ? 'Semana' : 'Mes'}
+                            Hoy
                         </button>
-                    ))}
+                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (view === 'day') handleNavigateDate(addDays(currentDate, -1));
+                                    else if (view === 'week') handleNavigateDate(addDays(currentDate, -7));
+                                    else handleNavigateDate(startOfMonth(addDays(startOfMonth(currentDate), -1)));
+                                }}
+                                className="p-1 hover:bg-white hover:shadow-xs rounded-md text-slate-600 transition-all active:scale-95"
+                                title="Anterior (Día/Semana)"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (view === 'day') handleNavigateDate(addDays(currentDate, 1));
+                                    else if (view === 'week') handleNavigateDate(addDays(currentDate, 7));
+                                    else handleNavigateDate(startOfMonth(addDays(endOfMonth(currentDate), 1)));
+                                }}
+                                className="p-1 hover:bg-white hover:shadow-xs rounded-md text-slate-600 transition-all active:scale-95"
+                                title="Siguiente (Día/Semana)"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <span className="font-bold text-sm text-slate-800 capitalize select-none ml-1.5 whitespace-nowrap">
+                            {format(currentDate, view === 'day' ? "EEEE, d 'de' MMMM" : "MMMM yyyy", { locale: es })}
+                        </span>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <select
-                        className="px-3 py-2 border rounded-lg text-sm bg-white"
-                        value={selectedSede}
-                        onChange={(e) => {
-                            const val = e.target.value as any;
-                            setSelectedSede(val);
-                            if (val !== 'all') {
-                                setFormData(prev => ({ ...prev, sede: val }));
-                            }
-                        }}
-                    >
-                        {user?.role === 'admin' && <option value="all">Todas las Sedes</option>}
-                        {(user?.role === 'admin' ? ['norte', 'sur'] : user?.sedes_permitidas || []).map(s => (
-                            <option key={s} value={s} className="capitalize transition-colors">
-                                Sede {s}
-                            </option>
-                        ))}
-                    </select>
-
-                    <div className="flex bg-white rounded-lg border shadow-sm p-1">
-                        {[15, 30, 60].map((interval) => (
+                {/* LADO DERECHO: Sedes, Especialistas, Vistas, Herramientas y Nueva Cita */}
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap ml-auto">
+                    {/* Selector de Sede en Pills con colores distintivos */}
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-xl gap-0.5" title="Filtrar citas por sede">
+                        {user?.role === 'admin' && (
                             <button
-                                key={interval}
-                                onClick={() => setSlotInterval(interval as 15 | 30 | 60)}
-                                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${slotInterval === interval
-                                    ? 'bg-company-blue text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-slate-50'
-                                    }`}
+                                type="button"
+                                onClick={() => setSelectedSede('all')}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                                    selectedSede === 'all'
+                                        ? 'bg-white text-slate-800 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
                             >
-                                {interval}m
+                                Todas
+                            </button>
+                        )}
+                        {(user?.role === 'admin' ? ['norte', 'sur'] : user?.sedes_permitidas || []).map(s => {
+                            const isSelected = selectedSede === s;
+                            const colorClass = s === 'norte'
+                                ? (isSelected ? 'bg-blue-500 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-blue-600')
+                                : (isSelected ? 'bg-purple-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-purple-600');
+                            return (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedSede(s as Sede);
+                                        setFormData(prev => ({ ...prev, sede: s as Sede }));
+                                    }}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg capitalize transition-all ${colorClass}`}
+                                >
+                                    {s}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Filtro Cruzado de Especialistas */}
+                    {(user?.role === 'admin' || availableProfessionals.length > 1) && (
+                        <div className="relative" title="Filtrar por especialista">
+                            <select
+                                value={selectedProfessional}
+                                onChange={(e) => setSelectedProfessional(e.target.value)}
+                                className="pl-7 pr-3 py-1 bg-slate-100 hover:bg-slate-200/80 border-0 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer appearance-none focus:ring-2 focus:ring-blue-500 h-8"
+                            >
+                                <option value="all">👨‍⚕️ Todos los especialistas</option>
+                                {availableProfessionals.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        Dr(a). {p.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <User className="w-3.5 h-3.5 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
+                    )}
+
+                    {/* Selector de Vistas (Día, Semana, Mes) */}
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl">
+                        {(['day', 'week', 'month'] as const).map((viewOption) => (
+                            <button
+                                key={viewOption}
+                                type="button"
+                                onClick={() => setView(viewOption)}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                                    view === viewOption
+                                        ? 'bg-white shadow-xs text-company-blue'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                {viewOption === 'day' ? 'Día' : viewOption === 'week' ? 'Sem' : 'Mes'}
                             </button>
                         ))}
                     </div>
 
+                    {/* HERRAMIENTAS DESKTOP (>= lg): Intervalos y Mini-calendario */}
+                    <div className="hidden lg:flex items-center gap-1">
+                        {/* Selector de Intervalos ⚙️ */}
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsIntervalMenuOpen(!isIntervalMenuOpen);
+                                    setIsMiniCalendarOpen(false);
+                                    setIsOverflowMenuOpen(false);
+                                }}
+                                className={`p-1.5 rounded-xl border transition-colors ${
+                                    isIntervalMenuOpen
+                                        ? 'bg-blue-50 border-blue-200 text-company-blue'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                                title="Configurar resolución de intervalos (15m, 30m, 60m)"
+                            >
+                                <Settings2 className="w-4 h-4" />
+                            </button>
+
+                            {isIntervalMenuOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
+                                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                        Resolución de Agenda
+                                    </div>
+                                    <div className="space-y-1 mt-1">
+                                        {[15, 30, 60].map((interval) => (
+                                            <button
+                                                key={interval}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSlotInterval(interval as 15 | 30 | 60);
+                                                    setIsIntervalMenuOpen(false);
+                                                }}
+                                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                                    slotInterval === interval
+                                                        ? 'bg-blue-50 text-company-blue font-semibold'
+                                                        : 'text-slate-700 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <span>{interval} minutos {interval === 30 ? '(Recomendado)' : ''}</span>
+                                                {slotInterval === interval && <Check className="w-3.5 h-3.5 text-company-blue" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Widget Mini-Calendario 🗓️ */}
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMiniCalendarDate(currentDate);
+                                    setIsMiniCalendarOpen(!isMiniCalendarOpen);
+                                    setIsIntervalMenuOpen(false);
+                                    setIsOverflowMenuOpen(false);
+                                }}
+                                className={`p-1.5 rounded-xl border transition-colors ${
+                                    isMiniCalendarOpen
+                                        ? 'bg-blue-50 border-blue-200 text-company-blue'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                                title="Abrir selector rápido de fecha mensual"
+                            >
+                                <CalendarDays className="w-4 h-4" />
+                            </button>
+
+                            {isMiniCalendarOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-4 z-50 animate-in fade-in zoom-in-95">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="font-bold text-sm text-slate-800 capitalize">
+                                            {format(miniCalendarDate, 'MMMM yyyy', { locale: es })}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setMiniCalendarDate(subMonths(miniCalendarDate, 1))}
+                                                className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                                                title="Mes anterior"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setMiniCalendarDate(new Date())}
+                                                className="px-2 py-0.5 text-[10px] font-semibold text-company-blue hover:bg-blue-50 rounded"
+                                                title="Mes actual"
+                                            >
+                                                Hoy
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setMiniCalendarDate(addMonths(miniCalendarDate, 1))}
+                                                className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                                                title="Mes siguiente"
+                                            >
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                                        {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d, idx) => (
+                                            <span key={idx} className="text-[11px] font-semibold text-slate-400">
+                                                {d}
+                                            </span>
+                                        ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-1">
+                                        {eachDayOfInterval({
+                                            start: startOfWeek(startOfMonth(miniCalendarDate), { weekStartsOn: 1 }),
+                                            end: endOfWeek(endOfMonth(miniCalendarDate), { weekStartsOn: 1 })
+                                        }).map((day, idx) => {
+                                            const isSelected = isSameDay(day, currentDate);
+                                            const isDayToday = isSameDay(day, new Date());
+                                            const isCurrentMonthDay = isSameMonth(day, miniCalendarDate);
+
+                                            return (
+                                                <button
+                                                    key={idx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleNavigateDate(day);
+                                                        setIsMiniCalendarOpen(false);
+                                                    }}
+                                                    className={`h-7 w-7 mx-auto rounded-lg text-xs font-medium flex items-center justify-center transition-all ${
+                                                        isSelected
+                                                            ? 'bg-company-blue text-white font-bold shadow-xs'
+                                                            : isDayToday
+                                                            ? 'bg-blue-50 text-company-blue font-bold border border-blue-200'
+                                                            : isCurrentMonthDay
+                                                            ? 'text-slate-700 hover:bg-slate-100'
+                                                            : 'text-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {format(day, 'd')}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* BOTÓN OVERFLOW [...] PARA PANTALLAS PEQUEÑAS (< lg) */}
+                    <div className="lg:hidden relative">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsOverflowMenuOpen(!isOverflowMenuOpen);
+                                setIsMiniCalendarOpen(false);
+                                setIsIntervalMenuOpen(false);
+                            }}
+                            className={`p-1.5 rounded-xl border transition-colors ${
+                                isOverflowMenuOpen
+                                    ? 'bg-blue-50 border-blue-200 text-company-blue'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                            title="Más opciones de agenda"
+                        >
+                            <MoreHorizontal className="w-4 h-4" />
+                        </button>
+
+                        {isOverflowMenuOpen && (
+                            <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b pb-1 mb-1">
+                                    Opciones adicionales
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsOverflowMenuOpen(false);
+                                        setMiniCalendarDate(currentDate);
+                                        setIsMiniCalendarOpen(true);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                    <CalendarDays className="w-4 h-4 text-company-blue" />
+                                    <span>Selector de fecha mensual</span>
+                                </button>
+                                <div className="mt-2 pt-2 border-t">
+                                    <div className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                        Intervalo de tiempo
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {[15, 30, 60].map((int) => (
+                                            <button
+                                                key={int}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSlotInterval(int as 15 | 30 | 60);
+                                                    setIsOverflowMenuOpen(false);
+                                                }}
+                                                className={`py-1 text-xs rounded font-semibold text-center ${
+                                                    slotInterval === int
+                                                        ? 'bg-company-blue text-white'
+                                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                {int}m
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* BOTÓN PRINCIPAL [+ NUEVA CITA] */}
                     <button
+                        type="button"
                         onClick={() => {
                             resetForm();
                             setIsModalOpen(true);
                         }}
-                        className="bg-company-green text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600 flex items-center gap-2 shadow-sm"
+                        className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                        title="Agendar una nueva cita"
                     >
                         <Plus className="w-4 h-4" />
                         <span className="hidden sm:inline">Nueva Cita</span>
@@ -504,36 +845,40 @@ export default function Agenda() {
                 </div>
             </div>
 
-            {/* Navegación de fecha */}
-            <div className="flex items-center justify-between bg-white p-3 rounded-lg border shadow-sm">
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 text-xs font-medium border rounded hover:bg-slate-50">
-                        Hoy
-                    </button>
-                    <div className="flex">
-                        <button onClick={() => {
-                            if (view === 'day') setCurrentDate(addDays(currentDate, -1));
-                            else if (view === 'week') setCurrentDate(addDays(currentDate, -7));
-                            else setCurrentDate(startOfMonth(addDays(startOfMonth(currentDate), -1)));
-                        }} className="p-1 hover:bg-slate-100 rounded">
-                            <ChevronLeft className="w-5 h-5" />
-                        </button>
-                        <button onClick={() => {
-                            if (view === 'day') setCurrentDate(addDays(currentDate, 1));
-                            else if (view === 'week') setCurrentDate(addDays(currentDate, 7));
-                            else setCurrentDate(startOfMonth(addDays(endOfMonth(currentDate), 1)));
-                        }} className="p-1 hover:bg-slate-100 rounded">
-                            <ChevronRight className="w-5 h-5" />
-                        </button>
+            {/* FRANJA DE LEYENDA DISCRETA DE SERVICIOS */}
+            <div className="flex items-center justify-between text-xs px-3.5 py-1.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-slate-600 overflow-x-auto whitespace-nowrap gap-4">
+                <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Leyenda:</span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+                        <span className="text-slate-600 text-xs">Consulta</span>
                     </div>
-                    <span className="font-bold text-lg capitalize ml-2">
-                        {format(currentDate, view === 'day' ? "EEEE, d 'de' MMMM yyyy" : "MMMM yyyy", { locale: es })}
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                        <span className="text-slate-600 text-xs">Uña / Corte</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                        <span className="text-slate-600 text-xs">Hongo / Tratamiento</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+                        <span className="text-slate-600 text-xs">Plantilla / Orto</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                        <span className="text-slate-600 text-xs">Otros</span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                        📅 {filteredAppointments.length} citas registradas
                     </span>
                 </div>
             </div>
 
             {/* Grid de agenda */}
-            <div className="flex-1 overflow-auto bg-white rounded-lg border shadow-sm">
+            <div className={`flex-1 overflow-auto bg-white rounded-2xl border border-slate-200/80 shadow-xs transition-opacity duration-150 ${isNavigating ? 'opacity-60' : 'opacity-100'}`}>
                 {view === 'month' ? (
                     <div className="min-w-[800px] h-full flex flex-col">
                         <div className="grid grid-cols-7 border-b bg-slate-50">
@@ -593,8 +938,11 @@ export default function Agenda() {
                     </div>
                 ) : (
                     <div className="min-w-[800px]">
-                        <div className={`grid border-b sticky top-0 bg-slate-50 z-10 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
-                            <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center w-20">Hora</div>
+                        <div
+                            className="grid border-b sticky top-0 bg-slate-50 z-10"
+                            style={{ gridTemplateColumns: view === 'day' ? '5rem minmax(0, 1fr)' : '5rem repeat(7, minmax(0, 1fr))' }}
+                        >
+                            <div className="p-3 border-r text-xs font-semibold text-slate-500 text-center">Hora</div>
                             {daysToShow.map(day => (
                                 <div key={day.toString()} className={`p-3 border-r text-center ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}>
                                     <p className="text-xs font-semibold text-slate-600 capitalize">{format(day, 'EEE', { locale: es })}</p>
@@ -606,14 +954,41 @@ export default function Agenda() {
                         </div>
                         <div className="divide-y relative">
                             {hours.map(hour => (
-                                <div key={hour.toString()} className={`grid group hover:bg-slate-50 ${view === 'day' ? 'grid-cols-2' : 'grid-cols-8'}`}>
-                                    <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center w-20 h-24">
+                                <div
+                                    key={hour.toString()}
+                                    className="grid group hover:bg-slate-50"
+                                    style={{ gridTemplateColumns: view === 'day' ? '5rem minmax(0, 1fr)' : '5rem repeat(7, minmax(0, 1fr))' }}
+                                >
+                                    <div className="p-2 border-r text-xs text-slate-500 text-center flex items-center justify-center h-24">
                                         {format(hour, 'HH:mm')}
                                     </div>
                                     {daysToShow.map(day => {
                                         const appointmentsInSlot = getAppointmentsForSlot(day, hour);
+
+                                        // Cálculo del Indicador de Hora Actual en Tiempo Real
+                                        const slotStart = new Date(day);
+                                        slotStart.setHours(hour.getHours(), hour.getMinutes(), 0, 0);
+                                        const slotEnd = new Date(slotStart.getTime() + slotInterval * 60000);
+                                        const isToday = isSameDay(day, nowTime);
+                                        const isCurrentTimeInSlot = isToday && nowTime >= slotStart && nowTime < slotEnd;
+                                        const nowMinutesOffset = (nowTime.getTime() - slotStart.getTime()) / 60000;
+                                        const nowTopOffset = nowMinutesOffset * 1.6;
+
                                         return (
                                             <div key={day.toString()} className={`p-0 border-r h-24 relative transition-all duration-200 ${appointmentsInSlot.length === 0 ? 'hover:bg-blue-50/50 hover:shadow-inner cursor-pointer' : ''}`}>
+                                                {/* Indicador de Hora Actual en Tiempo Real */}
+                                                {isCurrentTimeInSlot && (
+                                                    <div
+                                                        style={{ top: `${nowTopOffset}px` }}
+                                                        className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
+                                                    >
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-400 ring-2 ring-white -ml-1 z-30 animate-pulse" />
+                                                        <div className="flex-1 border-t-2 border-rose-500 border-dashed" />
+                                                        <span className="bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs ml-1 mr-1">
+                                                            {format(nowTime, 'HH:mm')}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 {appointmentsInSlot.map(appointment => {
                                                     try {
                                                         if (!appointment?.date) return null;
